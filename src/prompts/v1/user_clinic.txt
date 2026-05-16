@@ -1,0 +1,32 @@
+Business: {{ name }}
+Location: {{ city }}
+Type: Clinic / Medical Practice
+Years in business: {{ years }}
+Maturity stage: {{ maturity_stage }}
+Has website: {{ has_website }}
+Website score: {{ website_score }}
+Website issues: {{ website_issues | join(", ") }}
+Rating: {{ rating or "Unknown" }}
+Review count: {{ review_count or "Unknown" }}
+Price level: {{ price_level or "Unknown" }}
+LinkedIn summary: {{ linkedin_summary[:500] }}
+Offerings: {{ offerings[:300] }}
+Biggest pain point: {{ biggest_pain_point }}
+
+Membership concept for clinics:
+{{ membership_concept }}
+
+Website benefits for {{ maturity_stage }} clinics:
+{% for line in website_benefit_lines %}
+- {{ line }}
+{% endfor %}
+
+Generate the JSON pitch. Focus on:
+- Professional trust-building design
+- Online appointment booking with doctor preference
+- Patient portal for history and reports
+- Family Health Plan membership for recurring revenue
+- WhatsApp reminders for medications and appointments
+- Doctor profiles and credentials
+
+Return ONLY valid JSON with keys: pitch_text, context_summary, membership_idea, website_benefits.

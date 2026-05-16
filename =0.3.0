@@ -1,0 +1,28 @@
+Collecting llama-cpp-python
+  Downloading llama_cpp_python-0.3.20.tar.gz (59.3 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 59.3/59.3 MB 21.4 MB/s eta 0:00:00
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Installing backend dependencies: started
+  Installing backend dependencies: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: typing-extensions>=4.5.0 in /home/pranavvv/.pyenv/versions/3.11.12/lib/python3.11/site-packages (from llama-cpp-python) (4.15.0)
+Requirement already satisfied: numpy>=1.20.0 in /home/pranavvv/.pyenv/versions/3.11.12/lib/python3.11/site-packages (from llama-cpp-python) (2.4.4)
+Collecting diskcache>=5.6.1 (from llama-cpp-python)
+  Downloading diskcache-5.6.3-py3-none-any.whl.metadata (20 kB)
+Requirement already satisfied: jinja2>=2.11.3 in /home/pranavvv/.pyenv/versions/3.11.12/lib/python3.11/site-packages (from llama-cpp-python) (3.1.6)
+Requirement already satisfied: MarkupSafe>=2.0 in /home/pranavvv/.pyenv/versions/3.11.12/lib/python3.11/site-packages (from jinja2>=2.11.3->llama-cpp-python) (3.0.3)
+Downloading diskcache-5.6.3-py3-none-any.whl (45 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 45.5/45.5 kB 2.9 MB/s eta 0:00:00
+Building wheels for collected packages: llama-cpp-python
+  Building wheel for llama-cpp-python (pyproject.toml): started
+  Building wheel for llama-cpp-python (pyproject.toml): still running...
+  Building wheel for llama-cpp-python (pyproject.toml): finished with status 'done'
+  Created wheel for llama-cpp-python: filename=llama_cpp_python-0.3.20-py3-none-linux_x86_64.whl size=13962909 sha256=c430d54ae761d908731bce400d030bd82a491bfd3a7d8721dd055632a43aa7f8
+  Stored in directory: /home/pranavvv/.cache/pip/wheels/69/92/e3/22614a4cfa8065e0f4bd1e6edab8cd7126b0171cf008aa8d53
+Successfully built llama-cpp-python
+Installing collected packages: diskcache, llama-cpp-python
+Successfully installed diskcache-5.6.3 llama-cpp-python-0.3.20

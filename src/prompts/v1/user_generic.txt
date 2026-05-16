@@ -1,0 +1,22 @@
+Business: {{ name }}
+Location: {{ city }}
+Type: {{ business_type }}
+Years in business: {{ years }}
+Maturity stage: {{ maturity_stage }}
+Has website: {{ has_website }}
+Website score: {{ website_score }}
+Website issues: {{ website_issues | join(", ") }}
+Rating: {{ rating or "Unknown" }}
+Review count: {{ review_count or "Unknown" }}
+Price level: {{ price_level or "Unknown" }}
+LinkedIn summary: {{ linkedin_summary[:500] }}
+Offerings: {{ offerings[:300] }}
+Biggest pain point: {{ biggest_pain_point }}
+Membership concept: {{ membership_concept }}
+
+Website benefits for this stage:
+{% for line in website_benefit_lines %}
+- {{ line }}
+{% endfor %}
+
+Generate the JSON pitch now.

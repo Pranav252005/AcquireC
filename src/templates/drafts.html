@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}WhatsApp Drafts{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">WhatsApp Drafts</h1>
+    <p class="text-gray-600 mt-1">Review and edit message drafts generated when WhatsApp was skipped</p>
+</div>
+
+{% if files %}
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Modified</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+            {% for f in files %}
+            <tr>
+                <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ f.name }}</td>
+                <td class="px-6 py-4 text-sm text-gray-500 text-right">{{ f.size }} bytes</td>
+                <td class="px-6 py-4 text-sm text-gray-500 text-right">{{ f.modified }}</td>
+                <td class="px-6 py-4 text-right">
+                    <a href="/drafts/{{ f.name | urlencode }}" class="text-indigo-600 hover:text-indigo-900 text-sm font-medium">Open</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="bg-white rounded-lg shadow p-6 text-center text-gray-500">
+    No draft files found yet. Run the pipeline without WhatsApp to generate drafts.
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Kanban Board{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Kanban Board</h1>
+    <p class="text-gray-600 mt-1">Move leads through your sales pipeline</p>
+</div>
+
+<div class="bg-white rounded-lg shadow mb-6 p-4">
+    <form method="get" class="flex gap-4 items-end">
+        <div>
+            <label class="block text-sm font-medium text-gray-700">City Filter</label>
+            <input type="text" name="city" value="{{ city_filter or '' }}" class="mt-1 block w-48 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2">
+        </div>
+        <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">Filter</button>
+        <a href="/kanban" class="text-sm text-gray-500 hover:text-gray-700">Clear</a>
+    </form>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+    {% for stage in stages %}
+    <div class="bg-gray-100 rounded-lg p-3">
+        <div class="flex justify-between items-center mb-3">
+            <h3 class="font-semibold text-gray-700 capitalize">{{ stage }}</h3>
+            <span class="text-xs bg-white px-2 py-0.5 rounded-full text-gray-600">{{ columns[stage]|length }}</span>
+        </div>
+        <div class="space-y-2 kanban-column">
+            {% for lead in columns[stage] %}
+            <div class="bg-white rounded-lg shadow p-3 border-l-4 {% if stage == 'closed' %}border-green-500{% elif stage == 'lost' %}border-red-500{% elif stage == 'hot' %}border-purple-500{% else %}border-indigo-500{% endif %}">
+                <a href="/leads/{{ lead.id }}" class="font-medium text-sm text-indigo-600 hover:text-indigo-900 block truncate">{{ lead.business_name }}</a>
+                <p class="text-xs text-gray-500 mt-1">{{ lead.city }}</p>
+                <div class="flex items-center justify-between mt-2">
+                    {% if lead.lead_score %}
+                    <span class="text-xs font-bold text-purple-600">{{ lead.lead_score }}</span>
+                    {% endif %}
+                    {% if lead.latest_status == 'sent' %}
+                        <span class="px-1.5 inline-flex text-xs leading-4 font-semibold rounded-full bg-green-100 text-green-800">Sent</span>
+                    {% elif lead.latest_status == 'responded' %}
+                        <span class="px-1.5 inline-flex text-xs leading-4 font-semibold rounded-full bg-blue-100 text-blue-800">Reply</span>
+                    {% endif %}
+                </div>
+                <form action="/leads/{{ lead.id }}/stage" method="post" class="mt-2">
+                    <select name="stage" onchange="this.form.submit()" class="block w-full text-xs rounded border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 border px-2 py-1">
+                        <option value="" disabled {% if lead.kanban_stage == stage %}selected{% endif %}>Move to...</option>
+                        {% for s in stages %}
+                        <option value="{{ s }}">{{ s|capitalize }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Leads{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Leads</h1>
+    <p class="text-gray-600 mt-1">All discovered businesses with CRM data</p>
+</div>
+
+<div class="bg-white rounded-lg shadow mb-6 p-4">
+    <form method="get" class="flex flex-wrap gap-4 items-end">
+        <div>
+            <label class="block text-sm font-medium text-gray-700">City</label>
+            <input type="text" name="city" value="{{ city_filter or '' }}" class="mt-1 block w-48 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2">
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700">Status</label>
+            <select name="status" class="mt-1 block w-48 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2">
+                <option value="" {% if not status_filter %}selected{% endif %}>All</option>
+                <option value="sent" {% if status_filter == 'sent' %}selected{% endif %}>Sent</option>
+                <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed</option>
+                <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
+                <option value="responded" {% if status_filter == 'responded' %}selected{% endif %}>Responded</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700">Stage</label>
+            <select name="stage" class="mt-1 block w-48 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2">
+                <option value="" {% if not stage_filter %}selected{% endif %}>All</option>
+                <option value="cold" {% if stage_filter == 'cold' %}selected{% endif %}>Cold</option>
+                <option value="pitched" {% if stage_filter == 'pitched' %}selected{% endif %}>Pitched</option>
+                <option value="replied" {% if stage_filter == 'replied' %}selected{% endif %}>Replied</option>
+                <option value="meeting" {% if stage_filter == 'meeting' %}selected{% endif %}>Meeting</option>
+                <option value="closed" {% if stage_filter == 'closed' %}selected{% endif %}>Closed</option>
+                <option value="lost" {% if stage_filter == 'lost' %}selected{% endif %}>Lost</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700">Min Score</label>
+            <input type="number" name="min_score" value="{{ min_score or 0 }}" min="0" max="100" class="mt-1 block w-24 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2">
+        </div>
+        <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+            Filter
+        </button>
+        <a href="/leads" class="text-sm text-gray-500 hover:text-gray-700">Clear</a>
+    </form>
+</div>
+
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Business</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">City</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stage</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Maturity</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for lead in leads %}
+            <tr>
+                <td class="px-4 py-3 whitespace-nowrap">
+                    <a href="/leads/{{ lead.id }}" class="font-medium text-indigo-600 hover:text-indigo-900">{{ lead.business_name }}</a>
+                    {% if lead.rating %}<span class="text-xs text-gray-400 ml-1">{{ lead.rating }}★</span>{% endif %}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ lead.city }}</td>
+                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ lead.business_type }}</td>
+                <td class="px-4 py-3 whitespace-nowrap">
+                    <span class="text-sm font-semibold {% if lead.lead_score and lead.lead_score >= 70 %}text-purple-600{% else %}text-gray-500{% endif %}">
+                        {{ lead.lead_score or '—' }}
+                    </span>
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap">
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                        {{ lead.kanban_stage or 'cold' }}
+                    </span>
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ lead.maturity_stage or '—' }}</td>
+                <td class="px-4 py-3 whitespace-nowrap">
+                    {% if lead.latest_status == 'sent' %}
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Sent</span>
+                    {% elif lead.latest_status == 'failed' %}
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Failed</span>
+                    {% elif lead.latest_status == 'responded' %}
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Responded</span>
+                    {% else %}
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">No outreach</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,31 @@
+Business: {{ name }}
+Location: {{ city }}
+Type: Retail Shop
+Years in business: {{ years }}
+Maturity stage: {{ maturity_stage }}
+Has website: {{ has_website }}
+Website score: {{ website_score }}
+Website issues: {{ website_issues | join(", ") }}
+Rating: {{ rating or "Unknown" }}
+Review count: {{ review_count or "Unknown" }}
+Price level: {{ price_level or "Unknown" }}
+LinkedIn summary: {{ linkedin_summary[:500] }}
+Offerings: {{ offerings[:300] }}
+Biggest pain point: {{ biggest_pain_point }}
+
+Membership concept for retail:
+{{ membership_concept }}
+
+Website benefits for {{ maturity_stage }} retail:
+{% for line in website_benefit_lines %}
+- {{ line }}
+{% endfor %}
+
+Generate the JSON pitch. Focus on:
+- Product showcase with search and filters
+- Members-only drops and early access
+- Wishlist and back-in-stock alerts
+- Insider Circle loyalty program
+- WhatsApp broadcast integration for flash sales
+
+Return ONLY valid JSON with keys: pitch_text, context_summary, membership_idea, website_benefits.

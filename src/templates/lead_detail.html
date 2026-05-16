@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block title %}{{ lead.business_name }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/leads" class="text-sm text-indigo-600 hover:text-indigo-900">← Back to Leads</a>
+</div>
+
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <div class="flex justify-between items-start">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">{{ lead.business_name }}</h1>
+            <p class="text-gray-600 mt-1">{{ lead.city }} — {{ lead.business_type }}</p>
+        </div>
+        <div class="flex items-center space-x-3">
+            {% if lead.lead_score %}
+            <span class="px-3 py-1 text-sm font-bold text-purple-700 bg-purple-100 rounded-full">Score: {{ lead.lead_score }}</span>
+            {% endif %}
+            <span class="px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 rounded-full">{{ lead.kanban_stage or 'cold' }}</span>
+        </div>
+    </div>
+
+    <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+            <h3 class="text-sm font-medium text-gray-500">Address</h3>
+            <p class="mt-1 text-sm text-gray-900">{{ lead.address or 'N/A' }}</p>
+        </div>
+        <div>
+            <h3 class="text-sm font-medium text-gray-500">Phone</h3>
+            <p class="mt-1 text-sm text-gray-900">{{ lead.phone or 'N/A' }}</p>
+        </div>
+        <div>
+            <h3 class="text-sm font-medium text-gray-500">Email</h3>
+            <p class="mt-1 text-sm text-gray-900">{{ lead.email or 'N/A' }}</p>
+        </div>
+        <div>
+            <h3 class="text-sm font-medium text-gray-500">Website</h3>
+            <p class="mt-1 text-sm text-gray-900">
+                {% if lead.website %}<a href="{{ lead.website }}" target="_blank" class="text-indigo-600 hover:text-indigo-900">{{ lead.website }}</a>{% else %}N/A{% endif %}
+            </p>
+        </div>
+        <div>
+            <h3 class="text-sm font-medium text-gray-500">LinkedIn</h3>
+            <p class="mt-1 text-sm text-gray-900">
+                {% if lead.linkedin_url %}<a href="{{ lead.linkedin_url }}" target="_blank" class="text-indigo-600 hover:text-indigo-900">{{ lead.linkedin_url }}</a>{% else %}N/A{% endif %}
+            </p>
+        </div>
+        <div>
+            <h3 class="text-sm font-medium text-gray-500">Years in Business</h3>
+            <p class="mt-1 text-sm text-gray-900">{{ lead.years_in_business or 'Unknown' }}</p>
+        </div>
+        <div>
+            <h3 class="text-sm font-medium text-gray-500">Maturity Stage</h3>
+            <p class="mt-1 text-sm text-gray-900">{{ lead.maturity_stage or 'Not analyzed' }}</p>
+        </div>
+        <div>
+            <h3 class="text-sm font-medium text-gray-500">Digital Readiness</h3>
+            <p class="mt-1 text-sm text-gray-900">{{ lead.digital_readiness or 'N/A' }}/10</p>
+        </div>
+        <div>
+            <h3 class="text-sm font-medium text-gray-500">Google Maps</h3>
+            <p class="mt-1 text-sm text-gray-900">
+                {% if lead.google_maps_url %}<a href="{{ lead.google_maps_url }}" target="_blank" class="text-indigo-600 hover:text-indigo-900">View on Maps</a>{% else %}N/A{% endif %}
+            </p>
+        </div>
+        {% if lead.rating %}
+        <div>
+            <h3 class="text-sm font-medium text-gray-500">Rating</h3>
+            <p class="mt-1 text-sm text-gray-900">{{ lead.rating }}★ ({{ lead.review_count or '?' }} reviews)</p>
+        </div>
+        {% endif %}
+        {% if lead.price_level %}
+        <div>
+            <h3 class="text-sm font-medium text-gray-500">Price Level</h3>
+            <p class="mt-1 text-sm text-gray-900">{{ lead.price_level }}</p>
+        </div>
+        {% endif %}
+        {% if lead.detected_cms %}
+        <div>
+            <h3 class="text-sm font-medium text-gray-500">CMS Detected</h3>
+            <p class="mt-1 text-sm text-gray-900">{{ lead.detected_cms }}</p>
+        </div>
+        {% endif %}
+        {% if lead.projected_roi_months %}
+        <div>
+            <h3 class="text-sm font-medium text-gray-500">Projected ROI</h3>
+            <p class="mt-1 text-sm text-gray-900">{{ lead.projected_roi_months }} months</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if lead.biggest_pain_point %}
+    <div class="mt-6">
+        <h3 class="text-sm font-medium text-gray-500">Biggest Pain Point</h3>
+        <p class="mt-1 text-sm text-gray-900 bg-red-50 border border-red-100 rounded p-3">{{ lead.biggest_pain_point }}</p>
+    </div>
+    {% endif %}
+
+    {% if lead.linkedin_summary %}
+    <div class="mt-6">
+        <h3 class="text-sm font-medium text-gray-500">LinkedIn Summary</h3>
+        <p class="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{{ lead.linkedin_summary }}</p>
+    </div>
+    {% endif %}
+
+    {% if lead.menu_or_services %}
+    <div class="mt-6">
+        <h3 class="text-sm font-medium text-gray-500">Menu / Services</h3>
+        <p class="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{{ lead.menu_or_services }}</p>
+    </div>
+    {% endif %}
+
+    {% if lead.membership_idea %}
+    <div class="mt-6">
+        <h3 class="text-sm font-medium text-gray-500">Membership Concept</h3>
+        <div class="mt-1 text-sm text-gray-900 bg-green-50 border border-green-100 rounded p-3 whitespace-pre-wrap">{{ lead.membership_idea }}</div>
+    </div>
+    {% endif %}
+
+    {% if lead.website_benefits %}
+    <div class="mt-6">
+        <h3 class="text-sm font-medium text-gray-500">Website Benefits</h3>
+        <div class="mt-1 text-sm text-gray-900 bg-blue-50 border border-blue-100 rounded p-3 whitespace-pre-wrap">{{ lead.website_benefits }}</div>
+    </div>
+    {% endif %}
+
+    {% if lead.website_audit %}
+    <div class="mt-6">
+        <h3 class="text-sm font-medium text-gray-500">Website Audit</h3>
+        <div class="mt-2 bg-gray-50 rounded p-3 text-sm text-gray-800">
+            <div class="grid grid-cols-2 gap-2 mb-2">
+                <div><span class="font-medium">Score:</span> <span class="{% if lead.website_audit.overall_score == 'good' %}text-green-600{% elif lead.website_audit.overall_score == 'poor' %}text-red-600{% else %}text-yellow-600{% endif %}">{{ lead.website_audit.overall_score }}</span></div>
+                <div><span class="font-medium">HTTPS:</span> {{ 'Yes' if lead.website_audit.https else 'No' }}</div>
+                <div><span class="font-medium">Mobile:</span> {{ 'Yes' if lead.website_audit.mobile_friendly else 'No' }}</div>
+                <div><span class="font-medium">Load time:</span> {{ lead.website_audit.load_time_ms }}ms</div>
+                {% if lead.website_audit.detected_cms %}
+                <div><span class="font-medium">CMS:</span> {{ lead.website_audit.detected_cms }}</div>
+                {% endif %}
+            </div>
+            {% if lead.website_audit.old_tech_detected %}
+            <div class="mb-1"><span class="font-medium">Old tech:</span> {{ lead.website_audit.old_tech_detected | join(', ') }}</div>
+            {% endif %}
+            {% if lead.website_audit.layout_issues %}
+            <div><span class="font-medium">Issues:</span> {{ lead.website_audit.layout_issues | join(', ') }}</div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Update Stage</h2>
+        <form action="/leads/{{ lead.id }}/stage" method="post" class="flex gap-2">
+            <select name="stage" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2">
+                <option value="cold" {% if lead.kanban_stage == 'cold' %}selected{% endif %}>Cold</option>
+                <option value="pitched" {% if lead.kanban_stage == 'pitched' %}selected{% endif %}>Pitched</option>
+                <option value="replied" {% if lead.kanban_stage == 'replied' %}selected{% endif %}>Replied</option>
+                <option value="meeting" {% if lead.kanban_stage == 'meeting' %}selected{% endif %}>Meeting</option>
+                <option value="closed" {% if lead.kanban_stage == 'closed' %}selected{% endif %}>Closed</option>
+                <option value="lost" {% if lead.kanban_stage == 'lost' %}selected{% endif %}>Lost</option>
+            </select>
+            <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">Update</button>
+        </form>
+    </div>
+
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Add Note</h2>
+        <form action="/leads/{{ lead.id }}/note" method="post" class="flex gap-2">
+            <input type="text" name="note_text" placeholder="E.g., Owner prefers WhatsApp, busy mornings..." class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border px-3 py-2" required>
+            <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">Add</button>
+        </form>
+    </div>
+</div>
+
+{% if notes %}
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-4">Notes</h2>
+    <div class="space-y-3">
+        {% for note in notes %}
+        <div class="border-l-4 border-indigo-400 bg-gray-50 p-3">
+            <p class="text-sm text-gray-800">{{ note.note_text }}</p>
+            <p class="text-xs text-gray-500 mt-1">{{ note.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if follow_ups %}
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-4">Scheduled Follow-ups</h2>
+    <div class="space-y-3">
+        {% for fu in follow_ups %}
+        <div class="flex justify-between items-center border border-gray-200 rounded-lg p-3">
+            <div>
+                <span class="text-sm font-medium text-gray-900">Day {{ fu.sequence_day }}</span>
+                <span class="text-xs text-gray-500 ml-2">{{ fu.channel.value.upper() }}</span>
+                <p class="text-xs text-gray-600 mt-1">{{ fu.message_text[:100] }}{% if fu.message_text|length > 100 %}...{% endif %}</p>
+            </div>
+            <div class="text-right">
+                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {% if fu.status.value == 'sent' %}bg-green-100 text-green-800{% elif fu.status.value == 'failed' %}bg-red-100 text-red-800{% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                    {{ fu.status.value }}
+                </span>
+                <p class="text-xs text-gray-500 mt-1">{{ fu.scheduled_at.strftime('%Y-%m-%d') }}</p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="bg-white rounded-lg shadow p-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-4">Outreach History</h2>
+    {% if outreaches %}
+    <div class="space-y-4">
+        {% for o in outreaches %}
+        <div class="border border-gray-200 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-2">
+                <span class="font-medium text-sm text-gray-900">{{ o.channel.value.upper() }}</span>
+                {% if o.status.value == 'sent' %}
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Sent</span>
+                {% elif o.status.value == 'failed' %}
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Failed</span>
+                {% elif o.status.value == 'responded' %}
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Responded</span>
+                {% else %}
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Pending</span>
+                {% endif %}
+            </div>
+            <p class="text-xs text-gray-500 mb-2">Sent at: {{ o.sent_at.strftime('%Y-%m-%d %H:%M') if o.sent_at else 'Not sent yet' }}</p>
+            <p class="text-sm text-gray-700 mb-2"><strong>Context:</strong> {{ o.context_summary }}</p>
+            <p class="text-sm text-gray-900 whitespace-pre-wrap">{{ o.message_text }}</p>
+            {% if o.error_message %}
+            <p class="text-sm text-red-600 mt-2">Error: {{ o.error_message }}</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-gray-500">No outreach attempts yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

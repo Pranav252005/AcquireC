@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Draft: {{ filename }}{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">{{ filename }}</h1>
+        <p class="text-gray-600 mt-1">Edit the draft and click Save to update the file</p>
+    </div>
+    <a href="/drafts" class="text-indigo-600 hover:text-indigo-900 text-sm font-medium">← Back to drafts</a>
+</div>
+
+<div class="bg-white rounded-lg shadow p-6">
+    <form method="post" action="/drafts/{{ filename | urlencode }}">
+        <textarea
+            name="content"
+            rows="25"
+            class="w-full p-4 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-sm text-gray-800"
+        >{{ content }}</textarea>
+        <div class="mt-4 flex justify-end space-x-3">
+            <a href="/drafts" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 text-sm font-medium">Cancel</a>
+            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm font-medium">Save</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

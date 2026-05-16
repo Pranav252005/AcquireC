@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">Dashboard</h1>
+    <p class="text-gray-500 mt-1">Overview of your client acquisition pipeline</p>
+</div>
+
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+    <div class="bg-white rounded-lg shadow p-5 text-center">
+        <div class="text-3xl font-bold text-gray-900">{{ stats.total }}</div>
+        <div class="text-sm text-gray-500">Total Leads</div>
+    </div>
+    <div class="bg-green-50 rounded-lg shadow p-5 text-center">
+        <div class="text-3xl font-bold text-green-600">{{ stats.contacted }}</div>
+        <div class="text-sm text-gray-500">Sent</div>
+    </div>
+    <div class="bg-blue-50 rounded-lg shadow p-5 text-center">
+        <div class="text-3xl font-bold text-blue-600">{{ stats.responded }}</div>
+        <div class="text-sm text-gray-500">Responded</div>
+    </div>
+    <div class="bg-red-50 rounded-lg shadow p-5 text-center">
+        <div class="text-3xl font-bold text-red-600">{{ stats.failed }}</div>
+        <div class="text-sm text-gray-500">Failed</div>
+    </div>
+    <div class="bg-yellow-50 rounded-lg shadow p-5 text-center">
+        <div class="text-3xl font-bold text-yellow-600">{{ stats.pending }}</div>
+        <div class="text-sm text-gray-500">Pending</div>
+    </div>
+    <div class="bg-purple-50 rounded-lg shadow p-5 text-center">
+        <div class="text-3xl font-bold text-purple-600">{{ stats.hot }}</div>
+        <div class="text-sm text-gray-500">Hot Leads</div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+    <div class="lg:col-span-2">
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold text-gray-900">Recent Leads</h2>
+                <a href="/leads" class="text-sm text-indigo-600 hover:text-indigo-900">View all →</a>
+            </div>
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Business</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">City</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for lead in recent_leads %}
+                    <tr>
+                        <td class="px-4 py-2 whitespace-nowrap">
+                            <a href="/leads/{{ lead.id }}" class="font-medium text-indigo-600 hover:text-indigo-900">{{ lead.business_name }}</a>
+                        </td>
+                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{{ lead.city }}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{{ lead.business_type }}</td>
+                        <td class="px-4 py-2 whitespace-nowrap">
+                            <span class="text-sm font-semibold {% if lead.lead_score and lead.lead_score >= 70 %}text-purple-600{% else %}text-gray-500{% endif %}">
+                                {{ lead.lead_score or 'N/A' }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-2 whitespace-nowrap">
+                            {% if lead.latest_status == 'sent' %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Sent</span>
+                            {% elif lead.latest_status == 'failed' %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Failed</span>
+                            {% elif lead.latest_status == 'responded' %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Responded</span>
+                            {% else %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">No outreach</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="lg:col-span-1">
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold text-gray-900">Hot Leads</h2>
+                <a href="/hot-leads" class="text-sm text-indigo-600 hover:text-indigo-900">View all →</a>
+            </div>
+            {% if hot_leads %}
+                <div class="space-y-3">
+                    {% for lead in hot_leads %}
+                    <div class="border border-gray-200 rounded-lg p-3 hover:bg-gray-50">
+                        <a href="/leads/{{ lead.id }}" class="font-medium text-indigo-600 hover:text-indigo-900">{{ lead.business_name }}</a>
+                        <div class="text-sm text-gray-500">{{ lead.city }} • {{ lead.business_type }}</div>
+                        <div class="flex items-center mt-1">
+                            <span class="text-xs font-bold text-purple-600 bg-purple-100 px-2 py-0.5 rounded">Score: {{ lead.lead_score }}</span>
+                            {% if lead.maturity_stage %}
+                            <span class="text-xs text-gray-500 ml-2">{{ lead.maturity_stage }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-gray-500 text-sm">No hot leads yet. Run the pipeline to generate scores.</p>
+            {% endif %}
+        </div>
+
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Cities</h2>
+            <div class="space-y-2">
+                {% for city in cities %}
+                <a href="/cities/{{ city.city }}" class="block border border-gray-200 rounded-lg p-3 hover:bg-gray-50">
+                    <div class="flex justify-between items-center">
+                        <span class="font-medium text-gray-900">{{ city.city }}</span>
+                        <span class="text-sm text-gray-500">{{ city.total }} leads</span>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>{{ city.contacted }} sent</span>
+                        <span>{{ city.responded }} responded</span>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,31 @@
+Business: {{ name }}
+Location: {{ city }}
+Type: Gym / Fitness Center
+Years in business: {{ years }}
+Maturity stage: {{ maturity_stage }}
+Has website: {{ has_website }}
+Website score: {{ website_score }}
+Website issues: {{ website_issues | join(", ") }}
+Rating: {{ rating or "Unknown" }}
+Review count: {{ review_count or "Unknown" }}
+Price level: {{ price_level or "Unknown" }}
+LinkedIn summary: {{ linkedin_summary[:500] }}
+Offerings: {{ offerings[:300] }}
+Biggest pain point: {{ biggest_pain_point }}
+
+Membership concept for gyms:
+{{ membership_concept }}
+
+Website benefits for {{ maturity_stage }} gyms:
+{% for line in website_benefit_lines %}
+- {{ line }}
+{% endfor %}
+
+Generate the JSON pitch. Focus on:
+- Class schedule with real-time capacity and online booking
+- Progress dashboard (weight, measurements, attendance streaks)
+- Fit Squad membership tiers with personal training credits
+- Nutrition plan portal
+- Community forum for members
+
+Return ONLY valid JSON with keys: pitch_text, context_summary, membership_idea, website_benefits.

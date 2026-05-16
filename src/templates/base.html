@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Client Acquisition Dashboard{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .kanban-column { min-height: 400px; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="/" class="text-xl font-bold text-indigo-600">Acquire Clients</a>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
+                    <a href="/leads" class="text-gray-600 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">Leads</a>
+                    <a href="/kanban" class="text-gray-600 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">Kanban</a>
+                    <a href="/hot-leads" class="text-gray-600 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">Hot Leads</a>
+                    <a href="/drafts" class="text-gray-600 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">Drafts</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
