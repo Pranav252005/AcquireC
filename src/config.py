@@ -23,12 +23,12 @@ class Settings(BaseSettings):
     smtp_password: str = Field(default="")
     smtp_from: str = Field(default="")
 
-    # Local GGUF model — unified VLM used for both vision and text tasks
+    # Text-only local model (for pitch generation — faster, no vision overhead)
     local_model_path: str = Field(
-        default="/home/pranavvv/models/qwen3.5-VLM-9b/Qwen3.5-9B-Q4_K_M.gguf"
+        default="/home/pranavvv/models/qwen3.5-9b/Qwen3.5-9B-Q4_K_M.gguf"
     )
 
-    # VLM model directory (contains both .gguf and mmproj)
+    # VLM model directory (for vision tasks — contains .gguf + mmproj)
     vlm_model_dir: str = Field(default="/home/pranavvv/models/qwen3.5-VLM-9b")
     vlm_model_file: str = Field(default="Qwen3.5-9B-Q4_K_M.gguf")
     vlm_mmproj_file: str = Field(default="mmproj-F16.gguf")

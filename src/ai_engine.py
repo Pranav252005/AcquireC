@@ -365,7 +365,24 @@ class AIPitchEngine:
             except Exception as exc:
                 logger.warning("Primary model failed (attempt %d): %s", attempt, exc)
 
-        # 3. Try Ollama API fallback
+        # 3. Try VLM fallback (same weights but with vision projector loaded)
+        try:
+            result = self._try_vlm_fallback(system_prompt, user_prompt)
+            errors = self.validator.validate(result)
+            if not errors:
+                self.cache.save(
+                    db,
+                    ctx,
+                    result["pitch_text"],
+                    result["membership_idea"],
+                    result["website_benefits"],
+                    model_used="vlm_fallback",
+                )
+                return result
+        except Exception as exc:
+            logger.warning("VLM fallback failed: %s", exc)
+
+        # 4. Try Ollama API fallback
         try:
             result = self._try_ollama_fallback(system_prompt, user_prompt)
             errors = self.validator.validate(result)
@@ -387,9 +404,31 @@ class AIPitchEngine:
         return self._template_fallback(ctx)
 
     def _try_primary(self, system_prompt: str, user_prompt: str) -> dict[str, str]:
-        """Generate using the primary local VLM with grammar constraint."""
+        """Generate using the primary local text model with grammar constraint."""
+        llm = _load_local_model(self.settings.local_model_path)
+        full_prompt = (
+            f"<|im_start|>system\n{system_prompt}\n<|im_start|>user\n{user_prompt}\n<|im_start|>assistant\n"
+        )
+        output = llm(
+            full_prompt,
+            max_tokens=1024,
+            stop=["<|im_start|>"],
+            temperature=TemperatureScheduler.get("draft"),
+            grammar=PITCH_GRAMMAR,
+        )
+        raw = output.get("choices", [{}])[0].get("text", "").strip()
+        parsed = json.loads(raw)
+        return {
+            "pitch_text": parsed.get("pitch_text", ""),
+            "context_summary": parsed.get("context_summary", ""),
+            "membership_idea": parsed.get("membership_idea", ""),
+            "website_benefits": parsed.get("website_benefits", ""),
+        }
+
+    def _try_vlm_fallback(self, system_prompt: str, user_prompt: str) -> dict[str, str]:
+        """Fallback to the VLM model (with vision projector) if text model fails."""
         llm = _load_local_model(
-            self.settings.local_model_path,
+            str(self.settings.vlm_model_path),
             clip_model_path=str(self.settings.vlm_mmproj_path),
         )
         full_prompt = (
