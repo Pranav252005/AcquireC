@@ -103,7 +103,7 @@ class FollowUpEngine:
             db.query(FollowUp)
             .filter(FollowUp.lead_id == lead_id)
             .filter(FollowUp.status == OutreachStatus.PENDING)
-            .update({"status": OutreachStatus.SENT})
+            .update({"status": OutreachStatus.CANCELLED})
         )
         db.commit()
         logger.info("Cancelled %d follow-ups for lead %d", count, lead_id)

@@ -29,8 +29,7 @@ class TestLinkedInResearcher:
             google_maps_url="https://maps.example.com/1",
         )
         db = MagicMock()
-        with patch.object(r, "_scrape_linkedin", return_value={
-            "url": "https://linkedin.com/company/test",
+        with patch.object(r, "_enrich_from_website", return_value={
             "summary": "Great coffee",
             "years": 5,
             "offerings": "Espresso, pastries",

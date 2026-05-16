@@ -29,10 +29,11 @@ wheels/
 *.sqlite3
 
 # Data and session directories
-data/*.db
+data/
 whatsapp_session/
 
-# Screenshots
+# Reports and screenshots
+reports/
 screenshots/
 
 # IDEs

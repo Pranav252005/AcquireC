@@ -1,4 +1,4 @@
-"""LinkedIn research + AI pitch generation via the new AI Engine."""
+"""Business research + AI pitch generation via the new AI Engine."""
 
 from __future__ import annotations
 
@@ -8,7 +8,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-from playwright.sync_api import sync_playwright
+import requests
+from bs4 import BeautifulSoup
+from playwright.sync_api import Browser
 from sqlalchemy.orm import Session
 
 from src.ai_engine import AIPitchEngine, BusinessContext
@@ -16,16 +18,16 @@ from src.business_intelligence import BusinessReportCard, MaturityAnalyzer
 from src.config import get_settings
 from src.membership_ideas import MembershipLibrary
 from src.models import Lead
-from src.vision_agent import VisionAgent
 
 logger = logging.getLogger(__name__)
 
 
 class LinkedInResearcher:
-    """Research a business on LinkedIn and generate a pitch via the AI Engine."""
+    """Research a business via its website and generate a pitch via the AI Engine."""
 
-    def __init__(self, headless: bool = True) -> None:
+    def __init__(self, headless: bool = True, browser: Browser | None = None) -> None:
         self.headless = headless
+        self.browser = browser
         self.settings = get_settings()
         self.ai_engine = AIPitchEngine()
 
@@ -35,8 +37,8 @@ class LinkedInResearcher:
         lead: Lead,
         website_audit: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Research lead on LinkedIn and return enriched data + pitch."""
-        linkedin_data = self._scrape_linkedin(lead)
+        """Research lead via website and return enriched data + pitch."""
+        web_data = self._enrich_from_website(lead)
 
         # Build business context
         has_website = bool(lead.website)
@@ -90,8 +92,8 @@ class LinkedInResearcher:
             has_website=has_website,
             website_score=website_score,
             website_issues=website_issues,
-            linkedin_summary=linkedin_data.get("summary") or "",
-            offerings=linkedin_data.get("offerings") or lead.menu_or_services or "",
+            linkedin_summary=web_data.get("summary") or "",
+            offerings=web_data.get("offerings") or lead.menu_or_services or "",
             rating=lead.rating,
             review_count=lead.review_count,
             price_level=lead.price_level,
@@ -109,10 +111,8 @@ class LinkedInResearcher:
             pitch_result = self.ai_engine._template_fallback(ctx)
 
         return {
-            "linkedin_url": linkedin_data.get("url"),
-            "linkedin_summary": linkedin_data.get("summary"),
-            "years_in_business": linkedin_data.get("years"),
-            "menu_or_services": linkedin_data.get("offerings"),
+            "years_in_business": web_data.get("years"),
+            "menu_or_services": web_data.get("offerings"),
             "pitch_text": pitch_result["pitch_text"],
             "context_summary": pitch_result.get("context_summary", f"{lead.business_type} pitch"),
             "membership_idea": pitch_result.get("membership_idea", ""),
@@ -121,76 +121,52 @@ class LinkedInResearcher:
             "lead_score": lead.lead_score,
         }
 
-    def _scrape_linkedin(self, lead: Lead) -> dict[str, Any]:
-        """Try to find the company page on LinkedIn public search."""
-        query = f'{lead.business_name} {lead.city} linkedin company'
-        result: dict[str, Any] = {"url": None, "summary": None, "years": None, "offerings": None}
+    def _enrich_from_website(self, lead: Lead) -> dict[str, Any]:
+        """Scrape the business's own website for description and services."""
+        result: dict[str, Any] = {"summary": "", "offerings": "", "years": None}
+        if not lead.website:
+            return result
 
         try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=self.headless)
-                try:
-                    page = browser.new_page()
-                    page.goto(
-                        f"https://www.bing.com/search?q={query.replace(' ', '+')}",
-                        wait_until="domcontentloaded",
-                        timeout=20000,
-                    )
-                    page.wait_for_timeout(3000)
+            url = lead.website if lead.website.startswith("http") else "https://" + lead.website
+            resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
 
-                    links = page.locator('a[href*="linkedin.com/company/"]').all()
-                    if not links:
-                        try:
-                            agent = VisionAgent(page, max_steps=2)
-                            agent.run_task("Find and click the first LinkedIn company page link in the search results")
-                            page.wait_for_timeout(3000)
-                            current_url = page.url
-                            if "linkedin.com/company" in current_url:
-                                result["url"] = current_url.split("?")[0]
-                        except Exception:
-                            pass
-                    else:
-                        href = links[0].get_attribute("href") or ""
-                        result["url"] = href.split("?")[0]
+            # Meta description
+            meta = soup.find("meta", attrs={"name": "description"}) or soup.find(
+                "meta", attrs={"property": "og:description"}
+            )
+            if meta:
+                result["summary"] = meta.get("content", "").strip()
 
-                    if result["url"]:
-                        try:
-                            page.goto(result["url"], wait_until="domcontentloaded", timeout=20000)
-                            page.wait_for_timeout(3000)
-                            desc_el = (
-                                page.locator('div[data-test-id="about-us"]')
-                                .or_(page.locator(".description"))
-                                .or_(page.locator('p:has-text("Overview") + div'))
-                            )
-                            if desc_el.count() > 0:
-                                result["summary"] = desc_el.first.text_content(timeout=5000) or ""
-                            else:
-                                try:
-                                    agent = VisionAgent(page, max_steps=2)
-                                    agent.run_task("Scroll down and find the company About or Overview section text")
-                                    paragraphs = page.locator("p").all_text_contents()
-                                    for p in paragraphs:
-                                        if len(p) > 50:
-                                            result["summary"] = p.strip()
-                                            break
-                                except Exception:
-                                    paragraphs = page.locator("p").all_text_contents()
-                                    for p in paragraphs:
-                                        if len(p) > 50:
-                                            result["summary"] = p.strip()
-                                            break
+            # Fallback to h1
+            h1 = soup.find("h1")
+            if h1 and not result["summary"]:
+                result["summary"] = h1.get_text(strip=True)
 
-                            year_match = re.search(r"\b(19\d{2}|20\d{2})\b", result.get("summary", ""))
-                            if year_match:
-                                from datetime import datetime
-                                founded = int(year_match.group(1))
-                                result["years"] = datetime.now().year - founded
-                        except Exception:
-                            pass
-                finally:
-                    browser.close()
-        except Exception:
-            pass
+            # Gather services from common sections
+            for section in soup.find_all(["section", "div"]):
+                cls = " ".join(section.get("class", [])).lower()
+                if any(k in cls for k in ["service", "offer", "menu", "what we do", "treatment", "specialty"]):
+                    texts = [
+                        p.get_text(strip=True)
+                        for p in section.find_all(["p", "li"])
+                        if len(p.get_text(strip=True)) > 10
+                    ]
+                    if texts:
+                        result["offerings"] = "\n".join(texts[:5])
+                        break
+
+            # Try to guess years in business from text
+            year_match = re.search(r"\b(19\d{2}|20\d{2})\b", result["summary"] + " " + result["offerings"])
+            if year_match:
+                from datetime import datetime
+                founded = int(year_match.group(1))
+                result["years"] = datetime.now().year - founded
+
+        except Exception as exc:
+            logger.debug("Website enrichment failed for %s: %s", lead.business_name, exc)
 
         return result
 

@@ -197,3 +197,19 @@ def update_lead_reply_intent(db: Session, lead_id: int, intent: str) -> Lead | N
         lead.kanban_stage = "replied"
         db.commit()
     return lead
+
+
+def get_outreach_stats(db: Session) -> dict[str, int]:
+    """Return outreach counts by status using SQL GROUP BY."""
+    rows = db.query(Outreach.status, func.count(Outreach.id)).group_by(Outreach.status).all()
+    stats = {"contacted": 0, "failed": 0, "responded": 0, "pending": 0}
+    for status, count in rows:
+        if status == OutreachStatus.SENT:
+            stats["contacted"] = count
+        elif status == OutreachStatus.FAILED:
+            stats["failed"] = count
+        elif status == OutreachStatus.RESPONDED:
+            stats["responded"] = count
+        elif status == OutreachStatus.PENDING:
+            stats["pending"] = count
+    return stats

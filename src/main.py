@@ -14,9 +14,13 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm, IntPrompt, Prompt
 from sqlalchemy.orm import Session
 
+from src.browser_pool import BrowserPool
 from src.config import get_settings
 from src.dashboard import run_dashboard as start_dashboard
 from src.database import get_sessionmaker, init_db
+from src.logging_config import setup_logging
+
+setup_logging()
 from src.discovery import DiscoveryError, GoogleMapsScraper
 from src.follow_up import FollowUpEngine
 from src.messenger import EmailSender, WhatsAppError, WhatsAppSender
@@ -77,8 +81,29 @@ def _append_whatsapp_draft(draft_path: Path, lead: Lead, pitch: str) -> None:
 
 def _extract_email_from_website(website: str) -> str | None:
     """Try to find a contact email by checking common pages."""
-    # This is a placeholder for email extraction heuristic.
-    # In production, you could scrape /contact, /about pages for mailto: links.
+    if not website:
+        return None
+    if not website.startswith("http"):
+        website = "https://" + website
+
+    import re
+    import requests
+
+    email_pattern = re.compile(r"[\w.\-]+@[\w.\-]+\.\w{2,}")
+    for path in ["", "/contact", "/about", "/reach-us"]:
+        try:
+            url = website.rstrip("/") + path
+            resp = requests.get(
+                url, timeout=10, headers={"User-Agent": "Mozilla/5.0"}
+            )
+            resp.raise_for_status()
+            matches = email_pattern.findall(resp.text)
+            for m in matches:
+                lower = m.lower()
+                if not lower.endswith((".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")):
+                    return m
+        except Exception:
+            continue
     return None
 
 
@@ -108,31 +133,29 @@ def run_pipeline(
     if stats["total"] > 0 and skip_contacted:
         console.print("[dim]Skipping already-contacted businesses.[/dim]")
 
-    # WhatsApp auth upfront if needed
+    # WhatsApp is draft-only; no auth needed for automation
     wa_sender = None
-    if "whatsapp" in channels:
-        console.print("\n[yellow]Opening WhatsApp Web for authentication...[/yellow]")
-        wa_sender = WhatsAppSender()
-        if not wa_sender.ensure_auth():
-            console.print("[red]WhatsApp authentication failed. Messages will be skipped.[/red]")
-            channels = [c for c in channels if c != "whatsapp"]
-            wa_sender.close()
-            wa_sender = None
-        else:
-            console.print("[green]WhatsApp Web authenticated.[/green]\n")
 
     # Discovery
     console.print(f"[bold blue]Step 1: Discovering {category} businesses in {city} on Google Maps...[/bold blue]")
-    scraper = GoogleMapsScraper(headless=True)
+    try:
+        pool = BrowserPool(headless=True)
+        shared_browser = pool.get_browser()
+    except Exception:
+        pool = None
+        shared_browser = None
+    scraper = GoogleMapsScraper(headless=True, browser=shared_browser)
     try:
         raw_leads = scraper.discover(city, category, max_leads=max_leads * 3)
     except DiscoveryError as exc:
         console.print(f"[red]Discovery failed: {exc}[/red]")
+        if pool:
+            pool.close()
         db.close()
         return {"error": str(exc), "city": city, "category": category}
 
     # Website audit filter: skip businesses with modern websites
-    auditor = WebsiteAuditor(headless=True)
+    auditor = WebsiteAuditor(headless=True, browser=shared_browser)
     website_skipped = 0
     audited_leads = []
     for data in raw_leads:
@@ -176,14 +199,17 @@ def run_pipeline(
         return {"found": 0, "sent": 0, "failed": 0, "skipped": skipped, "city": city, "category": category, "leads": []}
 
     # Research + Outreach
-    researcher = LinkedInResearcher(headless=True)
+    researcher = LinkedInResearcher(headless=True, browser=shared_browser)
     email_sender = EmailSender() if "email" in channels else None
     follow_up_engine = FollowUpEngine() if enable_follow_up else None
 
     sent_count = 0
     failed_count = 0
     skip_count = 0
-    draft_path = _whatsapp_draft_path(city) if "whatsapp" not in channels else None
+    # Create drafts when WhatsApp is unavailable (not selected or auth failed)
+    draft_path: Path | None = None
+    if "whatsapp" not in channels or wa_sender is None:
+        draft_path = _whatsapp_draft_path(city)
     processed_db_leads: list[Lead] = []
 
     with Progress(
@@ -303,11 +329,13 @@ def run_pipeline(
                         console.print(f"[green]  ✓ Email sent to {lead.email}[/green]")
                         sent_count += 1
                     elif ch == "whatsapp" and wa_sender:
-                        wa_sender.send(lead.phone, pitch)
+                        # Automated sending disabled; use drafts instead
+                        draft = wa_sender.create_draft(lead.phone, pitch)
+                        _append_whatsapp_draft(draft_path, lead, pitch)
+                        console.print(f"[cyan]  → WhatsApp draft saved for {lead.phone}[/cyan]")
                         log_outreach(
                             db, lead.id, OutreachChannel.WHATSAPP, pitch, context, status=OutreachStatus.SENT
                         )
-                        console.print(f"[green]  ✓ WhatsApp sent to {lead.phone}[/green]")
                         sent_count += 1
                 except Exception as exc:
                     log_outreach(
@@ -327,9 +355,8 @@ def run_pipeline(
 
             progress.start()
 
-    if wa_sender:
-        wa_sender.close()
-
+    if pool:
+        pool.close()
     db.close()
     summary = f"[bold]Done:[/bold] {sent_count} sent, {failed_count} failed, {skip_count} skipped, {skipped} already contacted."
     if draft_path:
@@ -440,6 +467,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     max_leads = IntPrompt.ask("How many leads per city+category combo?", default=20)
 
     db = get_db()
+    skip_contacted = True
     for city in cities:
         stats = get_city_summary(db, city)
         if stats["contacted"] > 0:
@@ -447,8 +475,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 f"You already contacted {stats['contacted']} businesses in {city}. Skip them?",
                 default=True,
             ):
-                db.close()
-                return 0
+                skip_contacted = False
     db.close()
 
     channels = []
@@ -462,13 +489,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         return 0
 
     if len(cities) == 1 and len(categories) == 1:
-        result = run_pipeline(cities[0], categories[0], max_leads, skip_contacted=True, channels=channels)
+        result = run_pipeline(cities[0], categories[0], max_leads, skip_contacted=skip_contacted, channels=channels)
     else:
         result = run_multi_pipeline(
             cities=cities,
             categories=categories,
             max_leads_per_combo=max_leads,
-            skip_contacted=True,
+            skip_contacted=skip_contacted,
             channels=channels,
         )
     if "error" in result:
@@ -611,14 +638,11 @@ def cmd_process_follow_ups(args: argparse.Namespace) -> int:
                 sent += 1
                 console.print(f"[green]✓ Follow-up email to {lead.business_name}[/green]")
             elif fu.channel == OutreachChannel.WHATSAPP and lead.phone:
-                if wa_sender.ensure_auth():
-                    wa_sender.send(lead.phone, fu.message_text)
-                    fu.status = OutreachStatus.SENT
-                    fu.sent_at = datetime.now(timezone.utc)
-                    sent += 1
-                    console.print(f"[green]✓ Follow-up WhatsApp to {lead.business_name}[/green]")
-                else:
-                    raise WhatsAppError("Not authenticated")
+                # WhatsApp automation disabled — skip follow-up
+                fu.status = OutreachStatus.FAILED
+                fu.error_message = "WhatsApp automation disabled"
+                failed += 1
+                console.print(f"[yellow]⚠ WhatsApp follow-up skipped for {lead.business_name} (automation disabled)[/yellow]")
             else:
                 fu.status = OutreachStatus.FAILED
                 fu.error_message = "No contact info"

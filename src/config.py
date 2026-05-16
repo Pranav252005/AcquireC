@@ -1,5 +1,6 @@
 """Configuration management using Pydantic Settings."""
 
+from functools import lru_cache
 from pathlib import Path
 
 from pydantic import Field
@@ -23,17 +24,28 @@ class Settings(BaseSettings):
     smtp_from: str = Field(default="")
 
     # Local GGUF model — unified VLM used for both vision and text tasks
-    local_model_path: str = Field(default="/home/pranavvv/models/qwen3.5-VLM-9b/Qwen3.5-9B-Q4_K_M.gguf")
+    local_model_path: str = Field(
+        default="/home/pranavvv/models/qwen3.5-VLM-9b/Qwen3.5-9B-Q4_K_M.gguf"
+    )
 
     # VLM model directory (contains both .gguf and mmproj)
     vlm_model_dir: str = Field(default="/home/pranavvv/models/qwen3.5-VLM-9b")
     vlm_model_file: str = Field(default="Qwen3.5-9B-Q4_K_M.gguf")
     vlm_mmproj_file: str = Field(default="mmproj-F16.gguf")
 
+    # Ollama fallback
+    ollama_url: str = Field(default="http://localhost:11434")
+    ollama_model: str = Field(default="qwen2.5:9b")
+
     # Vision agent toggle
     use_vision: bool = Field(default=True)
     vision_timeout_ms: int = Field(default=30000)
     vision_headed: bool = Field(default=True)
+
+    # Proxy
+    proxy_server: str = Field(default="")
+    proxy_username: str = Field(default="")
+    proxy_password: str = Field(default="")
 
     # Database
     db_path: str = Field(default="./data/leads.db")
@@ -79,6 +91,7 @@ class Settings(BaseSettings):
         return path
 
 
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Return cached settings instance."""
     return Settings()

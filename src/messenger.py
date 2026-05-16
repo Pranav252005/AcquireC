@@ -8,10 +8,9 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Browser, sync_playwright
 
 from src.config import get_settings
-from src.vision_agent import VisionAgent
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +36,19 @@ class EmailSender:
 
 
 class WhatsAppSender:
-    """Send WhatsApp messages via WhatsApp Web using Playwright."""
+    """WhatsApp Web automation for drafting messages.
 
-    def __init__(self, headless: bool | None = None) -> None:
+    WARNING: Automated sending violates Meta's Terms of Service and will
+    result in a permanent ban. This class is kept for manual auth
+    verification and draft creation only. Do NOT use send() for bulk
+    outreach.
+    """
+
+    def __init__(self, headless: bool | None = None, browser: Browser | None = None) -> None:
         self.settings = get_settings()
         self.headless = headless if headless is not None else not self.settings.vision_headed
         self.session_path = self.settings.whatsapp_session_path
+        self.browser = browser
         self._playwright = None
         self._context = None
         self._page = None
@@ -50,6 +56,10 @@ class WhatsAppSender:
     def _ensure_context(self):
         """Return a reusable persistent browser context, creating one if needed."""
         if self._context is not None:
+            return self._context
+        if self.browser is not None:
+            # Cannot use persistent context with external browser; use regular context
+            self._context = self.browser.new_context()
             return self._context
         if self._playwright is None:
             self._playwright = sync_playwright().start()
@@ -66,13 +76,10 @@ class WhatsAppSender:
         page = context.new_page()
         try:
             page.goto("https://web.whatsapp.com", wait_until="domcontentloaded", timeout=60000)
-            # Wait for either QR code scan or chat list (authenticated)
             try:
-                # If chat list appears, we're already logged in
                 page.wait_for_selector('div[aria-label="Chat list"]', timeout=30000)
                 return True
             except Exception:
-                # Wait longer for QR scan
                 try:
                     page.wait_for_selector('div[aria-label="Chat list"]', timeout=120000)
                     return True
@@ -81,78 +88,26 @@ class WhatsAppSender:
         finally:
             page.close()
 
-    def send(self, phone: str, message: str) -> None:
-        """Send a WhatsApp message to a phone number."""
+    def create_draft(self, phone: str, message: str) -> dict[str, str]:
+        """Return a draft dict for manual sending. Does NOT send automatically."""
         cleaned = re.sub(r"[^\d]", "", phone)
         if not cleaned:
             raise ValueError(f"Invalid phone number: {phone}")
+        return {
+            "phone": cleaned,
+            "message": message,
+            "link": f"https://wa.me/{cleaned}?text={requests_utils_quote(message)}",
+        }
 
-        context = self._ensure_context()
-        page = context.new_page()
+    def send(self, phone: str, message: str) -> None:
+        """DEPRECATED: Automated WhatsApp sending is disabled.
 
-        try:
-            logger.info("Navigating to WhatsApp Web for phone: %s", cleaned)
-            page.goto(
-                f"https://web.whatsapp.com/send?phone={cleaned}",
-                wait_until="domcontentloaded",
-                timeout=60000,
-            )
-            # Wait for chat to load or "phone number not on WhatsApp" message
-            page.wait_for_timeout(5000)
-
-            # Check if number is not on WhatsApp
-            logger.info("Checking if phone number is valid on WhatsApp")
-            invalid = page.locator('div:has-text("Phone number shared via url is invalid")')
-            if invalid.count() > 0 and invalid.first.is_visible(timeout=3000):
-                raise WhatsAppError(f"Phone number {phone} is not on WhatsApp")
-
-            # Wait for chat input
-            logger.info("Waiting for chat input box")
-            try:
-                input_box = page.locator('div[contenteditable="true"][data-tab="1"]')
-                input_box.wait_for(timeout=30000)
-                logger.info("Chat input box found")
-            except Exception:
-                logger.warning("Primary chat input selector failed, trying vision fallback")
-                # Vision fallback: ask VLM to find the message input area
-                agent = VisionAgent(page, max_steps=3)
-                agent.run_task("Find the WhatsApp message text input field and click it so I can type")
-                # After vision agent runs, try again or proceed
-                try:
-                    input_box = page.locator('div[contenteditable="true"]')
-                    input_box.wait_for(timeout=10000)
-                    logger.info("Chat input found via vision fallback")
-                except Exception as exc:
-                    raise WhatsAppError(f"Could not locate WhatsApp chat input: {exc}")
-
-            # Type message (click first, then type with delay for contenteditable)
-            logger.info("Typing message")
-            try:
-                input_box.click()
-                input_box.type(message, delay=50)
-            except Exception:
-                logger.warning("Direct typing failed, trying vision fallback")
-                # Vision fallback for typing
-                agent = VisionAgent(page, max_steps=2)
-                agent.run_task(f"Type this exact message into the WhatsApp chat input: {message}")
-            page.wait_for_timeout(500)
-
-            # Press Enter to send
-            logger.info("Sending message")
-            try:
-                input_box.press("Enter")
-            except Exception:
-                logger.warning("Pressing Enter failed, trying vision fallback")
-                # Vision fallback: ask VLM to press the send button
-                agent = VisionAgent(page, max_steps=2)
-                agent.run_task("Click the send button in WhatsApp to send the message")
-            page.wait_for_timeout(3000)
-            logger.info("Message sent successfully")
-
-            # Rate limiting
-            time.sleep(3)
-        finally:
-            page.close()
+        Use create_draft() for manual copy-paste sending instead.
+        """
+        raise WhatsAppError(
+            "Automated WhatsApp sending is disabled to prevent account bans. "
+            "Use create_draft() to generate a manual message link."
+        )
 
     def close(self) -> None:
         """Close the browser context and playwright instance."""
@@ -166,3 +121,20 @@ class WhatsAppSender:
 
 class WhatsAppError(Exception):
     """Raised when WhatsApp sending fails."""
+
+
+def requests_utils_quote(s: str) -> str:
+    """Lightweight URL quoting for WhatsApp message links."""
+    # Basic quoting for common chars; not full urllib.parse.quote
+    repl = {
+        " ": "%20",
+        "\n": "%0A",
+        "&": "%26",
+        "?": "%3F",
+        "=": "%3D",
+        "#": "%23",
+        "%": "%25",
+    }
+    for old, new in repl.items():
+        s = s.replace(old, new)
+    return s

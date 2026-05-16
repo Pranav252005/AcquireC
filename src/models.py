@@ -39,6 +39,7 @@ class OutreachStatus(str, enum.Enum):
     SENT = "sent"
     FAILED = "failed"
     RESPONDED = "responded"
+    CANCELLED = "cancelled"
 
 
 class ReplyIntent(str, enum.Enum):

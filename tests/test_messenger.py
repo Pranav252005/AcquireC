@@ -37,7 +37,7 @@ class TestWhatsAppSender:
         """Invalid phone should raise ValueError."""
         sender = WhatsAppSender()
         with pytest.raises(ValueError):
-            sender.send("not-a-number", "Hello")
+            sender.create_draft("not-a-number", "Hello")
 
     def test_whatsapp_error_is_exception(self) -> None:
         """WhatsAppError should be catchable."""

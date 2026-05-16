@@ -5,21 +5,39 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from playwright.sync_api import sync_playwright
+import requests
+from bs4 import BeautifulSoup
+from playwright.sync_api import Browser, sync_playwright
+
+# Simple in-memory cache for audit results
+_audit_cache: dict[str, dict[str, Any]] = {}
+
+
+def _get_from_cache(url: str) -> dict[str, Any] | None:
+    return _audit_cache.get(url)
+
+
+def _set_cache(url: str, result: dict[str, Any]) -> None:
+    _audit_cache[url] = result
 
 
 class WebsiteAuditor:
     """Audit a business website for quality signals (mobile, speed, tech stack)."""
 
-    def __init__(self, headless: bool = True, timeout: int = 30000) -> None:
+    def __init__(self, headless: bool = True, timeout: int = 30000, browser: Browser | None = None) -> None:
         self.headless = headless
         self.timeout = timeout
+        self.browser = browser
 
     def audit(self, url: str) -> dict[str, Any]:
-        """Run a multi-viewport audit on *url* and return a quality report dict.
+        """Run an audit on *url* and return a quality report dict.
 
         Returns on error: {"has_website": True, "audit_failed": True}
         """
+        cached = _get_from_cache(url)
+        if cached is not None:
+            return cached
+
         result: dict[str, Any] = {
             "has_website": True,
             "mobile_friendly": True,
@@ -31,36 +49,225 @@ class WebsiteAuditor:
             "detected_cms": None,
         }
 
+        # Fast path: requests + BeautifulSoup
         try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=self.headless)
-                try:
-                    # --- Desktop audit ---
-                    desktop_ctx = browser.new_context(
-                        viewport={"width": 1280, "height": 800},
-                    )
-                    desktop_page = desktop_ctx.new_page()
-                    _run_checks(desktop_page, url, result, self.timeout)
-                    desktop_ctx.close()
-
-                    # --- Mobile audit ---
-                    mobile_ctx = browser.new_context(
-                        viewport={"width": 375, "height": 667},
-                        user_agent=(
-                            "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
-                            "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-                            "Version/16.0 Mobile/15E148 Safari/604.1"
-                        ),
-                    )
-                    mobile_page = mobile_ctx.new_page()
-                    _run_checks(mobile_page, url, result, self.timeout, is_mobile=True)
-                    mobile_ctx.close()
-                finally:
-                    browser.close()
+            self._audit_with_requests(url, result)
+            # If we got enough info and no heavy JS detected, skip Playwright
+            if result.get("detected_cms") or result["layout_issues"] or not result.get("needs_js", False):
+                self._score(result)
+                _set_cache(url, result)
+                return result
         except Exception:
+            pass
+
+        # Playwright path for JS-heavy sites
+        try:
+            self._audit_with_playwright(url, result)
+        except Exception:
+            _set_cache(url, {"has_website": True, "audit_failed": True})
             return {"has_website": True, "audit_failed": True}
 
-        # --- Heuristic scoring ---
+        self._score(result)
+        _set_cache(url, result)
+        return result
+
+    def _audit_with_requests(self, url: str, result: dict[str, Any]) -> None:
+        resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Viewport meta
+        viewport = soup.find("meta", attrs={"name": "viewport"})
+        if not viewport:
+            result["mobile_friendly"] = False
+            result["layout_issues"].append("missing_viewport_meta")
+
+        # HTTPS check
+        if not resp.url.startswith("https://"):
+            result["https"] = False
+            result["layout_issues"].append("no_https")
+
+        # DOM size (approximate from HTML length / tag count)
+        dom_size = len(soup.find_all(True))
+        if dom_size > 3000:
+            result["layout_issues"].append(f"bloated_dom_{dom_size}_nodes")
+
+        # Tables for layout
+        tables = soup.find_all("table")
+        presentation_tables = len(soup.find_all("table", attrs={"role": "presentation"}))
+        layout_tables = len(tables) - presentation_tables
+        if layout_tables > 2:
+            result["layout_issues"].append(f"tables_for_layout_{layout_tables}")
+
+        # Responsive images
+        images = soup.find_all("img")
+        non_responsive = sum(1 for img in images if not img.get("srcset") and not img.get("sizes"))
+        if len(images) > 20 and non_responsive > len(images) * 0.5:
+            result["layout_issues"].append(f"non_responsive_images_{non_responsive}/{len(images)}")
+
+        # CMS detection
+        result["detected_cms"] = self._detect_cms(soup, resp.text)
+
+        # Old tech
+        generator = soup.find("meta", attrs={"name": "generator"})
+        if generator:
+            gen_content = (generator.get("content") or "").lower()
+            ancient = ["frontpage", "dreamweaver", "iweb", "wordpress 3.", "wordpress 2.", "wordpress 1.", "microsoft frontpage", "adobe golive"]
+            for sig in ancient:
+                if sig in gen_content:
+                    result["old_tech_detected"].append(sig)
+
+        for tag in ["font", "marquee", "blink", "center"]:
+            if soup.find(tag):
+                result["old_tech_detected"].append(f"deprecated_tag_{tag}")
+
+        # Modern framework detection
+        if "__NEXT_DATA__" in resp.text:
+            result["detected_cms"] = "nextjs"
+        elif "astro-island" in resp.text:
+            result["detected_cms"] = "astro"
+        elif "data-reactroot" in resp.text or "reactroot" in resp.text:
+            result["detected_cms"] = "react"
+        elif "__VUE__" in resp.text:
+            result["detected_cms"] = "vue"
+        elif "window.gatsby" in resp.text or "___gatsby" in resp.text:
+            result["detected_cms"] = "gatsby"
+
+        # Flag if we might need JS rendering
+        result["needs_js"] = bool(result["detected_cms"] in ("nextjs", "react", "vue", "gatsby", "astro"))
+
+    def _audit_with_playwright(self, url: str, result: dict[str, Any]) -> None:
+        browser = self.browser
+        if browser is None:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=self.headless)
+                self._run_playwright_checks(browser, url, result)
+        else:
+            self._run_playwright_checks(browser, url, result)
+
+    @staticmethod
+    def _run_playwright_checks(browser, url: str, result: dict[str, Any]) -> None:
+        context = browser.new_context(viewport={"width": 1280, "height": 800})
+        page = context.new_page()
+        start = time.time()
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        page.wait_for_load_state("networkidle", timeout=30000)
+        result["load_time_ms"] = int((time.time() - start) * 1000)
+
+        viewport_exists = page.locator('meta[name="viewport"]').count() > 0
+        if not viewport_exists:
+            result["mobile_friendly"] = False
+            result["layout_issues"].append("missing_viewport_meta")
+
+        current_url = page.url
+        if not current_url.startswith("https://"):
+            result["https"] = False
+            result["layout_issues"].append("no_https")
+
+        node_count = page.evaluate("() => document.querySelectorAll('*').length")
+        if node_count > 3000:
+            result["layout_issues"].append(f"bloated_dom_{node_count}_nodes")
+
+        table_count = page.locator("table").count()
+        presentation_tables = page.locator('table[role="presentation"]').count()
+        layout_tables = table_count - presentation_tables
+        if layout_tables > 2:
+            result["layout_issues"].append(f"tables_for_layout_{layout_tables}")
+
+        images = page.locator("img").all()
+        non_responsive = 0
+        for img in images:
+            try:
+                if not img.get_attribute("srcset") and not img.get_attribute("sizes"):
+                    non_responsive += 1
+            except Exception:
+                continue
+        if len(images) > 20 and non_responsive > len(images) * 0.5:
+            result["layout_issues"].append(f"non_responsive_images_{non_responsive}/{len(images)}")
+
+        html = page.content()
+        result["detected_cms"] = WebsiteAuditor._detect_cms_from_html(html)
+
+        generator = page.locator('meta[name="generator"]').first
+        if generator.count() > 0:
+            gen_content = (generator.get_attribute("content") or "").lower()
+            ancient = ["frontpage", "dreamweaver", "iweb", "wordpress 3.", "wordpress 2.", "wordpress 1.", "microsoft frontpage", "adobe golive"]
+            for sig in ancient:
+                if sig in gen_content:
+                    result["old_tech_detected"].append(sig)
+
+        for tag in ["font", "marquee", "blink", "center"]:
+            if page.locator(tag).count() > 0:
+                result["old_tech_detected"].append(f"deprecated_tag_{tag}")
+
+        try:
+            perf = page.evaluate("""() => {
+                const t = window.performance && window.performance.timing;
+                if (!t) return null;
+                return { navStart: t.navigationStart, loadEnd: t.loadEventEnd };
+            }""")
+            if perf and perf.get("loadEnd") and perf.get("navStart"):
+                js_load = perf["loadEnd"] - perf["navStart"]
+                if js_load > 0:
+                    result["load_time_ms"] = max(result["load_time_ms"], js_load)
+                    if js_load > 5000:
+                        result["layout_issues"].append(f"slow_load_{js_load}ms")
+        except Exception:
+            pass
+
+        context.close()
+
+    @staticmethod
+    def _detect_cms(soup: BeautifulSoup, html: str) -> str | None:
+        generator = soup.find("meta", attrs={"name": "generator"})
+        if generator:
+            gen = (generator.get("content") or "").lower()
+            if "wordpress" in gen:
+                return "wordpress"
+            if "wix" in gen:
+                return "wix"
+            if "squarespace" in gen:
+                return "squarespace"
+            if "shopify" in gen:
+                return "shopify"
+            if "drupal" in gen:
+                return "drupal"
+            if "joomla" in gen:
+                return "joomla"
+        if "wp-content" in html or "wp-includes" in html:
+            return "wordpress"
+        if "wix.com" in html or "wix-static" in html:
+            return "wix"
+        if "squarespace.com" in html or "sqsp" in html:
+            return "squarespace"
+        if "cdn.shopify.com" in html or "myshopify" in html:
+            return "shopify"
+        return None
+
+    @staticmethod
+    def _detect_cms_from_html(html: str) -> str | None:
+        if "wp-content" in html or "wp-includes" in html:
+            return "wordpress"
+        if "wix.com" in html or "wix-static" in html:
+            return "wix"
+        if "squarespace.com" in html or "sqsp" in html:
+            return "squarespace"
+        if "cdn.shopify.com" in html or "myshopify" in html:
+            return "shopify"
+        if "__NEXT_DATA__" in html:
+            return "nextjs"
+        if "astro-island" in html:
+            return "astro"
+        if "data-reactroot" in html or "reactroot" in html:
+            return "react"
+        if "__VUE__" in html:
+            return "vue"
+        if "window.gatsby" in html or "___gatsby" in html:
+            return "gatsby"
+        return None
+
+    @staticmethod
+    def _score(result: dict[str, Any]) -> None:
         issues = len(result["old_tech_detected"]) + len(result["layout_issues"])
         if not result["https"]:
             issues += 1
@@ -75,125 +282,3 @@ class WebsiteAuditor:
             result["overall_score"] = "needs_work"
         else:
             result["overall_score"] = "good"
-
-        return result
-
-
-def _run_checks(
-    page,
-    url: str,
-    result: dict[str, Any],
-    timeout: int,
-    is_mobile: bool = False,
-) -> None:
-    """Navigate and run technical checks on a single page instance."""
-    start = time.time()
-    page.goto(url, wait_until="domcontentloaded", timeout=timeout)
-    page.wait_for_load_state("networkidle", timeout=timeout)
-    load_ms = int((time.time() - start) * 1000)
-    result["load_time_ms"] = max(result["load_time_ms"], load_ms)
-
-    # 1. Viewport meta tag
-    viewport_exists = page.locator('meta[name="viewport"]').count() > 0
-    if is_mobile and not viewport_exists:
-        result["mobile_friendly"] = False
-        result["layout_issues"].append("missing_viewport_meta")
-
-    # 2. HTTPS check (already set from URL but double-check current URL)
-    current_url = page.url
-    if not current_url.startswith("https://"):
-        result["https"] = False
-        result["layout_issues"].append("no_https")
-
-    # 3. DOM size
-    node_count = page.evaluate("() => document.querySelectorAll('*').length")
-    if node_count > 3000:
-        result["layout_issues"].append(f"bloated_dom_{node_count}_nodes")
-
-    # 4. Tables used for layout
-    table_count = page.locator("table").count()
-    presentation_tables = page.locator('table[role="presentation"]').count()
-    layout_tables = table_count - presentation_tables
-    if layout_tables > 2:
-        result["layout_issues"].append(f"tables_for_layout_{layout_tables}")
-
-    # 5. Responsive images
-    images = page.locator("img").all()
-    non_responsive = 0
-    for img in images:
-        try:
-            has_srcset = img.get_attribute("srcset") or ""
-            has_sizes = img.get_attribute("sizes") or ""
-            if not has_srcset and not has_sizes:
-                non_responsive += 1
-        except Exception:
-            continue
-    if len(images) > 20 and non_responsive > len(images) * 0.5:
-        result["layout_issues"].append(f"non_responsive_images_{non_responsive}/{len(images)}")
-
-    # 6. Old tech signatures
-    generator = page.locator('meta[name="generator"]').first
-    detected_cms = None
-    if generator.count() > 0:
-        gen_content = (generator.get_attribute("content") or "").lower()
-        ancient = ["frontpage", "dreamweaver", "iweb", "wordpress 3.", "wordpress 2.", "wordpress 1.", "microsoft frontpage", "adobe golive"]
-        for sig in ancient:
-            if sig in gen_content:
-                result["old_tech_detected"].append(sig)
-        # CMS detection
-        if "wordpress" in gen_content:
-            detected_cms = "wordpress"
-        elif "wix" in gen_content:
-            detected_cms = "wix"
-        elif "squarespace" in gen_content:
-            detected_cms = "squarespace"
-        elif "shopify" in gen_content:
-            detected_cms = "shopify"
-        elif "drupal" in gen_content:
-            detected_cms = "drupal"
-        elif "joomla" in gen_content:
-            detected_cms = "joomla"
-
-    # Detect CMS from other signals if meta generator didn't catch it
-    if not detected_cms:
-        try:
-            html = page.content()
-            if "wp-content" in html or "wp-includes" in html:
-                detected_cms = "wordpress"
-            elif "wix.com" in html or "wix-static" in html:
-                detected_cms = "wix"
-            elif "squarespace.com" in html or "sqsp" in html:
-                detected_cms = "squarespace"
-            elif "cdn.shopify.com" in html or "myshopify" in html:
-                detected_cms = "shopify"
-            elif "react-root" in html and "next.js" not in html.lower():
-                detected_cms = "custom"
-        except Exception:
-            pass
-
-    result["detected_cms"] = detected_cms
-
-    # Check for very old inline styles / font tags / marquee / blink
-    deprecated_tags = ["font", "marquee", "blink", "center"]
-    for tag in deprecated_tags:
-        if page.locator(tag).count() > 0:
-            result["old_tech_detected"].append(f"deprecated_tag_{tag}")
-
-    # 7. Performance timing via JS (if available)
-    try:
-        perf = page.evaluate("""() => {
-            const t = window.performance && window.performance.timing;
-            if (!t) return null;
-            return {
-                navStart: t.navigationStart,
-                loadEnd: t.loadEventEnd,
-            };
-        }""")
-        if perf and perf.get("loadEnd") and perf.get("navStart"):
-            js_load = perf["loadEnd"] - perf["navStart"]
-            if js_load > 0:
-                result["load_time_ms"] = max(result["load_time_ms"], js_load)
-                if js_load > 5000:
-                    result["layout_issues"].append(f"slow_load_{js_load}ms")
-    except Exception:
-        pass

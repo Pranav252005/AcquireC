@@ -19,6 +19,7 @@ from src.tracker import (
     get_hot_leads,
     get_lead_detail,
     get_leads_by_stage,
+    get_outreach_stats,
     update_lead_stage,
 )
 
@@ -50,24 +51,15 @@ def _lead_status(lead: Lead) -> str:
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request, db: Session = Depends(get_db)):
     """Dashboard homepage."""
+    outreach_stats = get_outreach_stats(db)
     stats = {
         "total": db.query(Lead).count(),
-        "contacted": 0,
-        "failed": 0,
-        "responded": 0,
-        "pending": 0,
+        "contacted": outreach_stats.get("contacted", 0),
+        "failed": outreach_stats.get("failed", 0),
+        "responded": outreach_stats.get("responded", 0),
+        "pending": outreach_stats.get("pending", 0),
         "hot": len(get_hot_leads(db, min_score=70, limit=1000)),
     }
-    for lead in db.query(Lead).all():
-        st = _lead_status(lead)
-        if st == "sent":
-            stats["contacted"] += 1
-        elif st == "failed":
-            stats["failed"] += 1
-        elif st == "responded":
-            stats["responded"] += 1
-        else:
-            stats["pending"] += 1
 
     cities = get_all_cities(db)
     recent_leads = (
@@ -97,18 +89,23 @@ def leads(
     status: str = Query(""),
     min_score: int = Query(0),
     stage: str = Query(""),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
-    """List leads with filters."""
+    """List leads with filters and pagination."""
     query = db.query(Lead)
     if city:
         query = query.filter(Lead.city.ilike(f"%{city}%"))
     if min_score > 0:
         query = query.filter(Lead.lead_score >= min_score)
-    all_leads = query.order_by(Lead.created_at.desc()).all()
+
+    total = query.count()
+    offset = (page - 1) * per_page
+    page_leads = query.order_by(Lead.created_at.desc()).offset(offset).limit(per_page).all()
 
     filtered = []
-    for lead in all_leads:
+    for lead in page_leads:
         lead.latest_status = _lead_status(lead)
         if status and lead.latest_status != status:
             continue
@@ -125,6 +122,9 @@ def leads(
             "status_filter": status,
             "stage_filter": stage,
             "min_score": min_score,
+            "page": page,
+            "per_page": per_page,
+            "total": total,
         },
     )
 
@@ -226,25 +226,15 @@ def city_report(request: Request, city: str, db: Session = Depends(get_db)):
 @app.get("/api/stats")
 def api_stats(db: Session = Depends(get_db)):
     """JSON stats endpoint for charts."""
-    stats = {
+    outreach_stats = get_outreach_stats(db)
+    return {
         "total": db.query(Lead).count(),
-        "contacted": 0,
-        "failed": 0,
-        "responded": 0,
-        "pending": 0,
+        "contacted": outreach_stats.get("contacted", 0),
+        "failed": outreach_stats.get("failed", 0),
+        "responded": outreach_stats.get("responded", 0),
+        "pending": outreach_stats.get("pending", 0),
         "hot": len(get_hot_leads(db, min_score=70, limit=1000)),
     }
-    for lead in db.query(Lead).all():
-        st = _lead_status(lead)
-        if st == "sent":
-            stats["contacted"] += 1
-        elif st == "failed":
-            stats["failed"] += 1
-        elif st == "responded":
-            stats["responded"] += 1
-        else:
-            stats["pending"] += 1
-    return stats
 
 
 @app.get("/api/kanban/stats")

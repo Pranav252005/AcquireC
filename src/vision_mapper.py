@@ -80,7 +80,7 @@ def build_page_map(page: Page) -> list[ElementNode]:
             }
             if (!interesting.has(inferredRole)) continue;
             const eid = results.length + 1;
-            el.setAttribute("__eid__", String(eid));
+            el.dataset.eid = String(eid);
             const name = (
                 el.getAttribute("aria-label") ||
                 el.getAttribute("title") ||
@@ -111,7 +111,7 @@ def build_page_map(page: Page) -> list[ElementNode]:
                 name=_clean_text(item.get("name", "")),
                 text=_clean_text(item.get("value", "")),
                 placeholder=_clean_text(item.get("placeholder", "")),
-                selector=f"[__eid__='{idx}']",
+                selector=f"[data-eid='{idx}']",
             )
         )
     return nodes
@@ -192,39 +192,25 @@ def find_element_by_role_and_text(
     return None
 
 
-def _try_vision_fallback(page: Page, task: str) -> bool:
-    """Attempt vision-agent recovery before giving up."""
-    settings = get_settings()
-    if not getattr(settings, "use_vision", False):
-        return False
+def cleanup_page_map(page: Page) -> None:
+    """Remove data-eid attributes injected by build_page_map."""
     try:
-        from src.vision_agent import VisionAgent
-        agent = VisionAgent(page, max_steps=3, retries_per_step=1)
-        return agent.run_task(task)
-    except Exception as exc:
-        logging.warning("Vision fallback failed: %s", exc)
-        return False
+        page.evaluate("""() => {
+            document.querySelectorAll('[data-eid]').forEach(el => delete el.dataset.eid);
+        }""")
+    except Exception:
+        pass
 
 
 def safe_fill(page: Page, role: str, value: str, label_hint: str = "", placeholder_hint: str = "") -> None:
-    """Fill an input field discovered via accessibility tree.
-
-    Falls back to the vision agent if the element cannot be located.
-    """
+    """Fill an input field discovered via accessibility tree."""
     selector = find_element_by_role_and_text(
         page, role, text_substring=label_hint, placeholder_substring=placeholder_hint
     )
     if not selector:
-        task = f"Find and fill the {role} field"
-        if label_hint:
-            task += f' labelled "{label_hint}"'
-        if placeholder_hint:
-            task += f' with placeholder "{placeholder_hint}"'
-        task += f' with the text "{value}"'
-        if _try_vision_fallback(page, task):
-            return
         nodes = build_page_map(page)
         map_text = render_page_map(nodes)
+        cleanup_page_map(page)
         raise PageMapError(
             f"Could not find {role} element (hint={label_hint!r}).\n\n{map_text}"
         )
@@ -232,19 +218,12 @@ def safe_fill(page: Page, role: str, value: str, label_hint: str = "", placehold
 
 
 def safe_click(page: Page, role: str, label_hint: str = "") -> None:
-    """Click a button/link discovered via accessibility tree.
-
-    Falls back to the vision agent if the element cannot be located.
-    """
+    """Click a button/link discovered via accessibility tree."""
     selector = find_element_by_role_and_text(page, role, text_substring=label_hint)
     if not selector:
-        task = f"Find and click the {role} element"
-        if label_hint:
-            task += f' labelled "{label_hint}"'
-        if _try_vision_fallback(page, task):
-            return
         nodes = build_page_map(page)
         map_text = render_page_map(nodes)
+        cleanup_page_map(page)
         raise PageMapError(
             f"Could not find {role} element to click (hint={label_hint!r}).\n\n{map_text}"
         )

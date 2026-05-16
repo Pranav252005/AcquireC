@@ -16,9 +16,51 @@ class Summarizer:
     def __init__(self) -> None:
         self.console = Console()
 
+    # ------------------------------------------------------------------ #
+    # Data-only methods (no side effects)
+    # ------------------------------------------------------------------ #
+
+    def city_summary_data(self, db: Session, city: str) -> dict[str, Any]:
+        """Return raw city summary data."""
+        return get_city_summary(db, city)
+
+    def all_cities_summary_data(self, db: Session) -> list[dict[str, Any]]:
+        """Return raw data for all cities."""
+        return get_all_cities(db)
+
+    def lead_detail_data(self, db: Session, lead_id: int) -> dict[str, Any] | None:
+        """Return detailed lead data as a dict, or None if not found."""
+        lead = get_lead_detail(db, lead_id)
+        if not lead:
+            return None
+        outreaches = []
+        for o in lead.outreaches:
+            outreaches.append({
+                "channel": o.channel.value,
+                "status": o.status.value,
+                "sent_at": str(o.sent_at) if o.sent_at else None,
+                "context_summary": o.context_summary,
+                "message_text": o.message_text,
+            })
+        return {
+            "business_name": lead.business_name,
+            "city": lead.city,
+            "business_type": lead.business_type,
+            "address": lead.address,
+            "phone": lead.phone,
+            "email": lead.email,
+            "website": lead.website,
+            "years_in_business": lead.years_in_business,
+            "outreaches": outreaches,
+        }
+
+    # ------------------------------------------------------------------ #
+    # Presentation methods (print to console)
+    # ------------------------------------------------------------------ #
+
     def city_summary(self, db: Session, city: str) -> str:
         """Return a formatted city summary as string."""
-        stats = get_city_summary(db, city)
+        stats = self.city_summary_data(db, city)
         table = Table(title=f"City Summary: {city}")
         table.add_column("Metric", style="cyan")
         table.add_column("Count", style="magenta")
@@ -32,7 +74,7 @@ class Summarizer:
 
     def all_cities_summary(self, db: Session) -> str:
         """Return a formatted summary of all cities."""
-        cities = get_all_cities(db)
+        cities = self.all_cities_summary_data(db)
         if not cities:
             self.console.print("[yellow]No cities found yet.[/yellow]")
             return "No data"
@@ -57,36 +99,35 @@ class Summarizer:
 
     def lead_detail_report(self, db: Session, lead_id: int) -> str:
         """Return detailed info for a single lead."""
-        lead = get_lead_detail(db, lead_id)
-        if not lead:
+        data = self.lead_detail_data(db, lead_id)
+        if data is None:
             self.console.print("[red]Lead not found.[/red]")
             return "Not found"
 
-        self.console.print(f"\n[bold]{lead.business_name}[/bold] — {lead.city}")
-        self.console.print(f"Type: {lead.business_type}")
-        self.console.print(f"Address: {lead.address}")
-        self.console.print(f"Phone: {lead.phone or 'N/A'}")
-        self.console.print(f"Email: {lead.email or 'N/A'}")
-        self.console.print(f"Website: {lead.website or 'N/A'}")
-        self.console.print(f"LinkedIn: {lead.linkedin_url or 'N/A'}")
-        self.console.print(f"Years in business: {lead.years_in_business or 'Unknown'}")
-        self.console.print(f"Summary: {lead.linkedin_summary or 'N/A'}")
+        self.console.print(f"\n[bold]{data['business_name']}[/bold] — {data['city']}")
+        self.console.print(f"Type: {data['business_type']}")
+        self.console.print(f"Address: {data['address']}")
+        self.console.print(f"Phone: {data['phone'] or 'N/A'}")
+        self.console.print(f"Email: {data['email'] or 'N/A'}")
+        self.console.print(f"Website: {data['website'] or 'N/A'}")
+        self.console.print(f"Years in business: {data['years_in_business'] or 'Unknown'}")
 
-        if lead.outreaches:
+        if data["outreaches"]:
             self.console.print("\n[bold]Outreach History:[/bold]")
-            for o in lead.outreaches:
+            for o in data["outreaches"]:
                 status_color = {
-                    OutreachStatus.SENT: "green",
-                    OutreachStatus.FAILED: "red",
-                    OutreachStatus.PENDING: "yellow",
-                    OutreachStatus.RESPONDED: "blue",
-                }.get(o.status, "white")
+                    "sent": "green",
+                    "failed": "red",
+                    "pending": "yellow",
+                    "responded": "blue",
+                    "cancelled": "dim",
+                }.get(o["status"], "white")
                 self.console.print(
-                    f"  [{status_color}]{o.channel.value.upper()} — {o.status.value}[/{status_color}] "
-                    f"({o.sent_at or 'not sent'})"
+                    f"  [{status_color}]{o['channel'].upper()} — {o['status']}[/{status_color}] "
+                    f"({o['sent_at'] or 'not sent'})"
                 )
-                self.console.print(f"    Context: {o.context_summary}")
-                self.console.print(f"    Message: {o.message_text[:200]}...")
+                self.console.print(f"    Context: {o['context_summary']}")
+                self.console.print(f"    Message: {o['message_text'][:200]}...")
         else:
             self.console.print("\n[yellow]No outreach attempts yet.[/yellow]")
 

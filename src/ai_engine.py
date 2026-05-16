@@ -120,7 +120,10 @@ class PromptRenderer:
         try:
             tmpl = self.env.get_template(template_name)
         except Exception:
-            tmpl = self.env.get_template("user_generic.txt")
+            try:
+                tmpl = self.env.get_template("user_generic.txt")
+            except Exception:
+                return self._inline_generic_prompt(ctx)
         return tmpl.render(
             name=ctx.name,
             city=ctx.city,
@@ -139,6 +142,26 @@ class PromptRenderer:
             membership_concept=ctx.membership_concept or "Not available",
             website_benefit_lines=ctx.website_benefit_lines or [],
         )
+
+    @staticmethod
+    def _inline_generic_prompt(ctx: BusinessContext) -> str:
+        lines = [
+            f"Business: {ctx.name} in {ctx.city}",
+            f"Type: {ctx.business_type}",
+            f"Years in business: {ctx.years_in_business or 'unknown'}",
+            f"Has website: {ctx.has_website}",
+            f"Website score: {ctx.website_score}",
+            f"Website issues: {', '.join(ctx.website_issues) or 'none'}",
+            f"Rating: {ctx.rating or 'N/A'}",
+            f"Review count: {ctx.review_count or 'N/A'}",
+            f"Maturity stage: {ctx.maturity_stage or 'unknown'}",
+            f"Biggest pain point: {ctx.biggest_pain_point or 'Not analyzed'}",
+            f"Membership concept: {ctx.membership_concept or 'Not available'}",
+            f"Offerings: {ctx.offerings or 'Not available'}",
+            "",
+            "Generate a personalized business pitch.",
+        ]
+        return "\n".join(lines)
 
     @staticmethod
     def _template_for_type(business_type: str) -> str:
@@ -168,10 +191,15 @@ class PitchCacheManager:
     def _hash_context(ctx: BusinessContext) -> str:
         """Create a deterministic hash of the context."""
         key_data = {
+            "name": ctx.name,
+            "city": ctx.city,
             "type": ctx.business_type,
             "stage": ctx.maturity_stage,
             "score": ctx.website_score,
             "years": ctx.years_in_business,
+            "has_website": ctx.has_website,
+            "issues": ctx.website_issues,
+            "rating": ctx.rating,
         }
         raw = json.dumps(key_data, sort_keys=True)
         return hashlib.sha256(raw.encode()).hexdigest()
@@ -190,7 +218,8 @@ class PitchCacheManager:
             from src.models import _utc_now
 
             cache.last_used_at = _utc_now()
-            db.commit()
+            # Do not commit here; let caller manage transaction
+            db.flush()
             return {
                 "pitch_text": cache.pitch_text,
                 "membership_idea": cache.membership_idea,
@@ -210,17 +239,25 @@ class PitchCacheManager:
     ) -> None:
         """Store a successful pitch in cache."""
         h = self._hash_context(ctx)
-        cache = PitchCache(
-            context_hash=h,
-            business_type=ctx.business_type,
-            maturity_stage=ctx.maturity_stage or "unknown",
-            website_score=ctx.website_score,
-            pitch_text=pitch_text,
-            membership_idea=membership_idea,
-            website_benefits=website_benefits,
-            model_used=model_used,
-        )
-        db.add(cache)
+        existing = db.query(PitchCache).filter_by(context_hash=h).first()
+        if existing:
+            existing.pitch_text = pitch_text
+            existing.membership_idea = membership_idea
+            existing.website_benefits = website_benefits
+            existing.model_used = model_used
+            existing.last_used_at = _utc_now()
+        else:
+            cache = PitchCache(
+                context_hash=h,
+                business_type=ctx.business_type,
+                maturity_stage=ctx.maturity_stage or "unknown",
+                website_score=ctx.website_score,
+                pitch_text=pitch_text,
+                membership_idea=membership_idea,
+                website_benefits=website_benefits,
+                model_used=model_used,
+            )
+            db.add(cache)
         db.commit()
 
 
@@ -328,24 +365,7 @@ class AIPitchEngine:
             except Exception as exc:
                 logger.warning("Primary model failed (attempt %d): %s", attempt, exc)
 
-        # 3. Try text-only fallback
-        try:
-            result = self._try_text_fallback(system_prompt, user_prompt)
-            errors = self.validator.validate(result)
-            if not errors:
-                self.cache.save(
-                    db,
-                    ctx,
-                    result["pitch_text"],
-                    result["membership_idea"],
-                    result["website_benefits"],
-                    model_used="text_fallback",
-                )
-                return result
-        except Exception as exc:
-            logger.warning("Text fallback failed: %s", exc)
-
-        # 4. Try Ollama API fallback
+        # 3. Try Ollama API fallback
         try:
             result = self._try_ollama_fallback(system_prompt, user_prompt)
             errors = self.validator.validate(result)
@@ -391,40 +411,14 @@ class AIPitchEngine:
             "website_benefits": parsed.get("website_benefits", ""),
         }
 
-    def _try_text_fallback(self, system_prompt: str, user_prompt: str) -> dict[str, str]:
-        """Try a larger text-only model if available."""
-        text_path = Path(self.settings.local_model_path).parent / "Qwen2.5-14B-Q4_K_M.gguf"
-        llm = _load_text_model(str(text_path))
-        if llm is None:
-            raise RuntimeError("Text fallback model not available")
-
-        full_prompt = (
-            f"<|im_start|>system\n{system_prompt}\n<|im_start|>user\n{user_prompt}\n<|im_start|>assistant\n"
-        )
-        output = llm(
-            full_prompt,
-            max_tokens=1024,
-            stop=["<|im_start|>"],
-            temperature=TemperatureScheduler.get("draft"),
-            grammar=PITCH_GRAMMAR,
-        )
-        raw = output.get("choices", [{}])[0].get("text", "").strip()
-        parsed = json.loads(raw)
-        return {
-            "pitch_text": parsed.get("pitch_text", ""),
-            "context_summary": parsed.get("context_summary", ""),
-            "membership_idea": parsed.get("membership_idea", ""),
-            "website_benefits": parsed.get("website_benefits", ""),
-        }
-
     def _try_ollama_fallback(self, system_prompt: str, user_prompt: str) -> dict[str, str]:
         """Try Ollama HTTP API if running."""
         import urllib.request
 
-        url = "http://localhost:11434/api/generate"
+        url = f"{self.settings.ollama_url}/api/generate"
         payload = json.dumps(
             {
-                "model": "qwen2.5:32b",
+                "model": self.settings.ollama_model,
                 "prompt": f"{system_prompt}\n\n{user_prompt}\n\nReturn ONLY valid JSON.",
                 "stream": False,
                 "options": {"temperature": TemperatureScheduler.get("draft")},

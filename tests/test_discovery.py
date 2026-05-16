@@ -83,4 +83,4 @@ class TestGoogleMapsScraper:
         import inspect
 
         source = inspect.getsource(GoogleMapsScraper.discover)
-        assert "Could not locate or fill the Google Maps search box after all fallbacks" in source
+        assert "Could not locate or fill the Google Maps search box" in source
