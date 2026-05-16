@@ -276,7 +276,7 @@ class WebsiteAuditor:
         if not result["mobile_friendly"]:
             issues += 1
 
-        if issues >= 3 or result["load_time_ms"] > 8000:
+        if issues >= 3 or result["load_time_ms"] >= 8000:
             result["overall_score"] = "poor"
         elif issues >= 1:
             result["overall_score"] = "needs_work"

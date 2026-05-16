@@ -58,7 +58,8 @@ def build_page_map(page: Page) -> list[ElementNode]:
         const elements = document.querySelectorAll(
             'input, button, a, select, textarea, [role], [contenteditable="true"]'
         );
-        for (const el of elements) {
+        for (let i = 0; i < elements.length; i++) {
+            const el = elements[i];
             const role = (el.getAttribute("role") || "").toLowerCase();
             const tag = el.tagName.toLowerCase();
             let inferredRole = role;
@@ -79,8 +80,7 @@ def build_page_map(page: Page) -> list[ElementNode]:
                 }
             }
             if (!interesting.has(inferredRole)) continue;
-            const eid = results.length + 1;
-            el.dataset.eid = String(eid);
+            const rect = el.getBoundingClientRect();
             const name = (
                 el.getAttribute("aria-label") ||
                 el.getAttribute("title") ||
@@ -95,6 +95,12 @@ def build_page_map(page: Page) -> list[ElementNode]:
                 name: name.slice(0, 200),
                 value: value.slice(0, 200),
                 placeholder: placeholder.slice(0, 200),
+                bbox: {
+                    x: Math.round(rect.x),
+                    y: Math.round(rect.y),
+                    width: Math.round(rect.width),
+                    height: Math.round(rect.height)
+                }
             });
         }
         return results;
@@ -111,7 +117,7 @@ def build_page_map(page: Page) -> list[ElementNode]:
                 name=_clean_text(item.get("name", "")),
                 text=_clean_text(item.get("value", "")),
                 placeholder=_clean_text(item.get("placeholder", "")),
-                selector=f"[data-eid='{idx}']",
+                bbox=item.get("bbox", {}),
             )
         )
     return nodes
@@ -129,6 +135,8 @@ def render_page_map(nodes: list[ElementNode]) -> str:
             line += f' value="{n.text}"'
         if n.placeholder:
             line += f' placeholder="{n.placeholder}"'
+        if n.bbox:
+            line += f' @({n.bbox.get("x",0)},{n.bbox.get("y",0)} {n.bbox.get("width",0)}x{n.bbox.get("height",0)})'
         lines.append(line)
     lines.append("")
     lines.append("--- END PAGE MAP ---")
@@ -192,16 +200,6 @@ def find_element_by_role_and_text(
     return None
 
 
-def cleanup_page_map(page: Page) -> None:
-    """Remove data-eid attributes injected by build_page_map."""
-    try:
-        page.evaluate("""() => {
-            document.querySelectorAll('[data-eid]').forEach(el => delete el.dataset.eid);
-        }""")
-    except Exception:
-        pass
-
-
 def safe_fill(page: Page, role: str, value: str, label_hint: str = "", placeholder_hint: str = "") -> None:
     """Fill an input field discovered via accessibility tree."""
     selector = find_element_by_role_and_text(
@@ -210,7 +208,6 @@ def safe_fill(page: Page, role: str, value: str, label_hint: str = "", placehold
     if not selector:
         nodes = build_page_map(page)
         map_text = render_page_map(nodes)
-        cleanup_page_map(page)
         raise PageMapError(
             f"Could not find {role} element (hint={label_hint!r}).\n\n{map_text}"
         )
@@ -223,7 +220,6 @@ def safe_click(page: Page, role: str, label_hint: str = "") -> None:
     if not selector:
         nodes = build_page_map(page)
         map_text = render_page_map(nodes)
-        cleanup_page_map(page)
         raise PageMapError(
             f"Could not find {role} element to click (hint={label_hint!r}).\n\n{map_text}"
         )

@@ -100,6 +100,8 @@ def _extract_email_from_website(website: str) -> str | None:
             matches = email_pattern.findall(resp.text)
             for m in matches:
                 lower = m.lower()
+                if "example.com" in lower:
+                    continue
                 if not lower.endswith((".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")):
                     return m
         except Exception:

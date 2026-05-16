@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 from src.vision_mapper import (
     PageMapError,
     build_page_map,
-    cleanup_page_map,
     render_page_map,
     safe_click,
     safe_fill,
@@ -189,7 +188,7 @@ class GoogleMapsScraper:
                     except Exception:
                         continue
 
-            seen_names = set()
+            seen_keys: set[tuple[str, str]] = set()
             scroll_attempts = 0
             max_scrolls = max_leads * 3
             empty_scrolls = 0
@@ -244,8 +243,10 @@ class GoogleMapsScraper:
                     page.goto(url, wait_until="domcontentloaded", timeout=self.timeout)
                     page.wait_for_timeout(2500)
                     data = self._extract_detail(page)
-                    if data and data.get("business_name") and data["business_name"] not in seen_names:
-                        seen_names.add(data["business_name"])
+                    if data and data.get("business_name"):
+                        key = (city, data["business_name"])
+                        if key not in seen_keys:
+                            seen_keys.add(key)
                         data["city"] = city
                         data["business_type"] = category
                         data["google_maps_url"] = url
@@ -274,7 +275,6 @@ class GoogleMapsScraper:
                 map_text = render_page_map(nodes)
                 map_path = self.screenshots_dir / f"page_map_{timestamp}.txt"
                 map_path.write_text(map_text, encoding="utf-8")
-                cleanup_page_map(page)
             except Exception:
                 pass
             raise DiscoveryError(f"Google Maps scraping failed: {exc}") from exc
