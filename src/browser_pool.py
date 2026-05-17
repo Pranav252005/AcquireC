@@ -35,7 +35,13 @@ class BrowserPool:
             proxy = self._proxy_kwargs()
             if proxy:
                 kwargs["proxy"] = proxy
-            self._browser = self._playwright.chromium.launch(**kwargs)
+            try:
+                self._browser = self._playwright.chromium.launch(**kwargs)
+            except Exception:
+                # Clean up playwright so we don't leak a running event loop
+                self._playwright.stop()
+                self._playwright = None
+                raise
         return self._browser
 
     def new_context(
@@ -56,10 +62,16 @@ class BrowserPool:
 
     def close(self) -> None:
         if self._browser:
-            self._browser.close()
+            try:
+                self._browser.close()
+            except Exception:
+                pass
             self._browser = None
         if self._playwright:
-            self._playwright.stop()
+            try:
+                self._playwright.stop()
+            except Exception:
+                pass
             self._playwright = None
 
     def __enter__(self):

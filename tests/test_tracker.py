@@ -7,8 +7,12 @@ from sqlalchemy.orm import sessionmaker
 from src.database import init_db
 from src.models import Lead, Outreach, OutreachChannel, OutreachStatus
 from src.tracker import (
+    add_discovery_alert,
+    dismiss_discovery_alert,
+    get_active_discovery_alerts,
     get_all_cities,
     get_city_summary,
+    get_known_business_names,
     get_lead_detail,
     get_or_create_lead,
     has_any_outreach,
@@ -150,3 +154,67 @@ class TestGetLeadDetail:
     def test_missing_lead_returns_none(self, db_session) -> None:
         """Non-existent ID should return None."""
         assert get_lead_detail(db_session, 99999) is None
+
+
+class TestGetKnownBusinessNames:
+    """Test suite for get_known_business_names."""
+
+    def test_empty_city_returns_empty_set(self, db_session) -> None:
+        """No leads in city should return empty set."""
+        result = get_known_business_names(db_session, "UnknownCity")
+        assert result == set()
+
+    def test_returns_names_for_city(self, db_session) -> None:
+        """Should return only business names for the given city."""
+        get_or_create_lead(db_session, "Mumbai", "Cafe A", defaults={"business_type": "cafe"})
+        get_or_create_lead(db_session, "Mumbai", "Salon B", defaults={"business_type": "salon"})
+        get_or_create_lead(db_session, "Delhi", "Cafe C", defaults={"business_type": "cafe"})
+        result = get_known_business_names(db_session, "Mumbai")
+        assert result == {"Cafe A", "Salon B"}
+
+    def test_filters_by_category(self, db_session) -> None:
+        """Should filter by business type when category is provided."""
+        get_or_create_lead(db_session, "Mumbai", "Cafe A", defaults={"business_type": "cafe"})
+        get_or_create_lead(db_session, "Mumbai", "Salon B", defaults={"business_type": "salon"})
+        result = get_known_business_names(db_session, "Mumbai", "cafe")
+        assert result == {"Cafe A"}
+
+
+class TestDiscoveryAlerts:
+    """Test suite for discovery alert functions."""
+
+    def test_add_discovery_alert(self, db_session) -> None:
+        """Should create a discovery alert."""
+        alert = add_discovery_alert(
+            db_session, "Mumbai", "cafe", "No new cafes left.", alert_type="warning"
+        )
+        assert alert.id is not None
+        assert alert.city == "Mumbai"
+        assert alert.category == "cafe"
+        assert alert.message == "No new cafes left."
+        assert alert.alert_type == "warning"
+        assert alert.dismissed is False
+
+    def test_get_active_discovery_alerts(self, db_session) -> None:
+        """Should return only non-dismissed alerts."""
+        add_discovery_alert(db_session, "Mumbai", "cafe", "All found.")
+        add_discovery_alert(db_session, "Delhi", "salon", "All found.")
+        alerts = get_active_discovery_alerts(db_session)
+        assert len(alerts) == 2
+
+    def test_get_active_discovery_alerts_filtered_by_city(self, db_session) -> None:
+        """Should filter alerts by city."""
+        add_discovery_alert(db_session, "Mumbai", "cafe", "All found.")
+        add_discovery_alert(db_session, "Delhi", "salon", "All found.")
+        alerts = get_active_discovery_alerts(db_session, city="Mumbai")
+        assert len(alerts) == 1
+        assert alerts[0].city == "Mumbai"
+
+    def test_dismiss_discovery_alert(self, db_session) -> None:
+        """Should mark alert as dismissed."""
+        alert = add_discovery_alert(db_session, "Mumbai", "cafe", "All found.")
+        result = dismiss_discovery_alert(db_session, alert.id)
+        assert result is not None
+        assert result.dismissed is True
+        alerts = get_active_discovery_alerts(db_session)
+        assert len(alerts) == 0

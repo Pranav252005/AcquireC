@@ -63,11 +63,17 @@ class WhatsAppSender:
             return self._context
         if self._playwright is None:
             self._playwright = sync_playwright().start()
-        self._context = self._playwright.chromium.launch_persistent_context(
-            user_data_dir=str(self.session_path),
-            headless=self.headless,
-            viewport={"width": 1280, "height": 800},
-        )
+        try:
+            self._context = self._playwright.chromium.launch_persistent_context(
+                user_data_dir=str(self.session_path),
+                headless=self.headless,
+                viewport={"width": 1280, "height": 800},
+            )
+        except Exception:
+            # Clean up playwright to avoid leaking a running event loop
+            self._playwright.stop()
+            self._playwright = None
+            raise
         return self._context
 
     def ensure_auth(self) -> bool:
@@ -84,6 +90,7 @@ class WhatsAppSender:
                     page.wait_for_selector('div[aria-label="Chat list"]', timeout=120000)
                     return True
                 except Exception:
+                    logger.debug("WhatsApp auth timeout: chat list not found")
                     return False
         finally:
             page.close()
@@ -112,10 +119,16 @@ class WhatsAppSender:
     def close(self) -> None:
         """Close the browser context and playwright instance."""
         if self._context:
-            self._context.close()
+            try:
+                self._context.close()
+            except Exception:
+                pass
             self._context = None
         if self._playwright:
-            self._playwright.stop()
+            try:
+                self._playwright.stop()
+            except Exception:
+                pass
             self._playwright = None
 
 

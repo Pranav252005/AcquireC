@@ -14,6 +14,8 @@ from src.database import get_db, init_db
 from src.models import Lead, OutreachStatus
 from src.tracker import (
     add_lead_note,
+    dismiss_discovery_alert,
+    get_active_discovery_alerts,
     get_all_cities,
     get_city_summary,
     get_hot_leads,
@@ -69,6 +71,7 @@ def index(request: Request, db: Session = Depends(get_db)):
         lead.latest_status = _lead_status(lead)
 
     hot_leads = get_hot_leads(db, min_score=70, limit=5)
+    alerts = get_active_discovery_alerts(db)
 
     return templates.TemplateResponse(
         request,
@@ -78,6 +81,7 @@ def index(request: Request, db: Session = Depends(get_db)):
             "cities": cities,
             "recent_leads": recent_leads,
             "hot_leads": hot_leads,
+            "alerts": alerts,
         },
     )
 
@@ -113,6 +117,7 @@ def leads(
             continue
         filtered.append(lead)
 
+    alerts = get_active_discovery_alerts(db)
     return templates.TemplateResponse(
         request,
         "leads.html",
@@ -125,6 +130,7 @@ def leads(
             "page": page,
             "per_page": per_page,
             "total": total,
+            "alerts": alerts,
         },
     )
 
@@ -136,6 +142,7 @@ def lead_detail(request: Request, lead_id: int, db: Session = Depends(get_db)):
     if not lead:
         return HTMLResponse("Lead not found", status_code=404)
     lead.latest_status = _lead_status(lead)
+    alerts = get_active_discovery_alerts(db)
     return templates.TemplateResponse(
         request,
         "lead_detail.html",
@@ -144,6 +151,7 @@ def lead_detail(request: Request, lead_id: int, db: Session = Depends(get_db)):
             "outreaches": lead.outreaches,
             "notes": lead.notes,
             "follow_ups": lead.follow_ups,
+            "alerts": alerts,
         },
     )
 
@@ -178,6 +186,7 @@ def kanban_board(request: Request, city: str = Query(""), db: Session = Depends(
             lead.latest_status = _lead_status(lead)
         columns[stage] = leads_in_stage
 
+    alerts = get_active_discovery_alerts(db)
     return templates.TemplateResponse(
         request,
         "kanban.html",
@@ -185,6 +194,7 @@ def kanban_board(request: Request, city: str = Query(""), db: Session = Depends(
             "columns": columns,
             "stages": stages,
             "city_filter": city,
+            "alerts": alerts,
         },
     )
 
@@ -195,10 +205,11 @@ def hot_leads_page(request: Request, db: Session = Depends(get_db)):
     leads = get_hot_leads(db, min_score=70, limit=50)
     for lead in leads:
         lead.latest_status = _lead_status(lead)
+    alerts = get_active_discovery_alerts(db)
     return templates.TemplateResponse(
         request,
         "hot_leads.html",
-        {"leads": leads},
+        {"leads": leads, "alerts": alerts},
     )
 
 
@@ -212,6 +223,7 @@ def city_report(request: Request, city: str, db: Session = Depends(get_db)):
     for lead in leads_in_city:
         lead.latest_status = _lead_status(lead)
 
+    alerts = get_active_discovery_alerts(db, city=city)
     return templates.TemplateResponse(
         request,
         "city_report.html",
@@ -219,6 +231,7 @@ def city_report(request: Request, city: str, db: Session = Depends(get_db)):
             "city": city,
             "stats": stats,
             "leads": leads_in_city,
+            "alerts": alerts,
         },
     )
 
@@ -261,7 +274,11 @@ def list_drafts(request: Request):
                         "modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
                     }
                 )
-    return templates.TemplateResponse(request, "drafts.html", {"files": files})
+    from src.database import get_db as get_db_gen
+    db = next(get_db_gen())
+    alerts = get_active_discovery_alerts(db)
+    db.close()
+    return templates.TemplateResponse(request, "drafts.html", {"files": files, "alerts": alerts})
 
 
 def _resolve_draft(filename: str) -> Path | None:
@@ -285,10 +302,14 @@ def view_draft(request: Request, filename: str):
     if not path:
         raise HTTPException(status_code=404, detail="Draft not found")
     content = path.read_text(encoding="utf-8")
+    from src.database import get_db as get_db_gen
+    db = next(get_db_gen())
+    alerts = get_active_discovery_alerts(db)
+    db.close()
     return templates.TemplateResponse(
         request,
         "draft_detail.html",
-        {"filename": filename, "content": content},
+        {"filename": filename, "content": content, "alerts": alerts},
     )
 
 
@@ -300,6 +321,13 @@ def save_draft(filename: str, content: str = Form(...)):
         raise HTTPException(status_code=404, detail="Draft not found")
     path.write_text(content, encoding="utf-8")
     return RedirectResponse(url=f"/drafts/{filename}", status_code=303)
+
+
+@app.post("/alerts/{alert_id}/dismiss")
+def dismiss_alert(alert_id: int, db: Session = Depends(get_db)):
+    """Dismiss a discovery alert."""
+    dismiss_discovery_alert(db, alert_id)
+    return RedirectResponse(url="/", status_code=303)
 
 
 def run_dashboard() -> None:

@@ -2,6 +2,7 @@
 
 import logging
 import time
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -38,16 +39,28 @@ class GoogleMapsScraper:
         city: str,
         category: str,
         max_leads: int = 20,
+        exclude_names: set[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Search Google Maps and return business listings."""
+        """Search Google Maps and return business listings.
+
+        Args:
+            city: City to search in.
+            category: Business category (e.g. "cafe", "salon").
+            max_leads: Maximum number of new leads to return.
+            exclude_names: Set of business names already in the database
+                that should be skipped.
+        """
         query = f"{category} in {city}" if category != "all" else f"businesses in {city}"
         results: list[dict[str, Any]] = []
+        excluded = exclude_names or set()
 
         browser = self.browser
-        playwright = None
+        own_playwright = None
         if browser is None:
-            playwright = sync_playwright().start()
-            browser = playwright.chromium.launch(headless=self.headless)
+            raise DiscoveryError(
+                "No shared browser available. "
+                "Please ensure Playwright browsers are installed: playwright install chromium"
+            )
         context = browser.new_context(
             viewport={"width": 1280, "height": 800},
             user_agent=(
@@ -95,12 +108,13 @@ class GoogleMapsScraper:
                                     time.sleep(1)
                                     consent_handled = True
                                     break
-                            except Exception:
+                            except Exception as exc:
+                                logger.debug("Consent button click failed: %s", exc)
                                 continue
                     else:
                         break
-                except Exception:
-                    logger.warning("Consent dialog detection failed")
+                except Exception as exc:
+                    logger.warning("Consent dialog detection failed: %s", exc)
                     break
 
             # ── Search box ──────────────────────────────────────────────
@@ -171,7 +185,8 @@ class GoogleMapsScraper:
                     'div[role="feed"] > div',
                     timeout=15000,
                 )
-            except Exception:
+            except Exception as exc:
+                logger.debug("Primary result selector timed out: %s", exc)
                 # Try alternative result containers
                 alt_selectors = [
                     '[data-result-index]',
@@ -185,22 +200,9 @@ class GoogleMapsScraper:
                         page.wait_for_selector(sel, timeout=5000)
                         logger.info("Results found via selector: %s", sel)
                         break
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug("Alt selector %s timed out: %s", sel, exc)
                         continue
-
-            seen_keys: set[tuple[str, str]] = set()
-            scroll_attempts = 0
-            max_scrolls = max_leads * 3
-            empty_scrolls = 0
-
-            CARD_SELECTORS = [
-                'div[role="feed"] > div',
-                'div[role="feed"] a[href*="/maps/place"]',
-                '[data-result-index]',
-                'a[href*="/maps/place"]',
-                'div[role="listitem"]',
-                'div[role="main"] div[data-result-index]',
-            ]
 
             # ── Collect place URLs by scrolling ─────────────────────────
             place_urls: list[str] = []
@@ -227,15 +229,28 @@ class GoogleMapsScraper:
                 )
                 for url in found:
                     if url not in place_urls:
-                        place_urls.append(url)
+                        # Try to pre-filter known places by parsing the name from the URL
+                        # Google Maps URLs look like /maps/place/Starbucks+Coffee/@...
+                        try:
+                            name_part = url.split('/maps/place/')[1].split('/@')[0]
+                            decoded = urllib.parse.unquote_plus(name_part).replace('+', ' ')
+                            if decoded not in excluded:
+                                place_urls.append(url)
+                            else:
+                                logger.debug("Skipping known place from URL: %s", decoded)
+                        except Exception:
+                            place_urls.append(url)
                 page.mouse.wheel(0, 1200)
                 page.wait_for_timeout(2000)
 
-            logger.info("Collected %d unique place URLs", len(place_urls))
+            logger.info("Collected %d unique place URLs after exclusion filter", len(place_urls))
             if not place_urls:
-                raise DiscoveryError("No business place URLs found on Google Maps search results.")
+                raise DiscoveryExhaustedError(
+                    f"All visible {category} places in {city} have already been discovered."
+                )
 
             # ── Visit each place page and extract details ────────────────
+            seen_keys: set[tuple[str, str]] = set()
             for idx, url in enumerate(place_urls):
                 if len(results) >= max_leads:
                     break
@@ -244,7 +259,11 @@ class GoogleMapsScraper:
                     page.wait_for_timeout(2500)
                     data = self._extract_detail(page)
                     if data and data.get("business_name"):
-                        key = (city, data["business_name"])
+                        name = data["business_name"]
+                        if name in excluded:
+                            logger.debug("Skipping already-known business: %s", name)
+                            continue
+                        key = (city, name)
                         if key not in seen_keys:
                             seen_keys.add(key)
                         data["city"] = city
@@ -263,26 +282,37 @@ class GoogleMapsScraper:
                     logger.warning("Failed to extract from %s: %s", url, visit_exc)
                     continue
 
+            if not results:
+                raise DiscoveryExhaustedError(
+                    f"All visible {category} places in {city} have already been discovered."
+                )
+
         except Exception as exc:
             logger.error("Google Maps scraping failed: %s", exc, exc_info=True)
             timestamp = int(time.time())
             try:
                 page.screenshot(path=str(self.screenshots_dir / f"error_{timestamp}.png"))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Error screenshot failed: %s", exc)
             try:
                 nodes = build_page_map(page)
                 map_text = render_page_map(nodes)
                 map_path = self.screenshots_dir / f"page_map_{timestamp}.txt"
                 map_path.write_text(map_text, encoding="utf-8")
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Page map capture failed: %s", exc)
             raise DiscoveryError(f"Google Maps scraping failed: {exc}") from exc
         finally:
             context.close()
-            if playwright is not None:
-                browser.close()
-                playwright.stop()
+            if own_playwright is not None:
+                try:
+                    browser.close()
+                except Exception:
+                    pass
+                try:
+                    own_playwright.stop()
+                except Exception:
+                    pass
 
         return results
 
@@ -370,8 +400,8 @@ class GoogleMapsScraper:
                 rating_match = __import__('re').search(r"(\d\.\d)", rating_text)
                 if rating_match:
                     rating = float(rating_match.group(1))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Rating extraction failed: %s", exc)
 
             try:
                 reviews_text = page.locator('[role="main"] a:has-text("review")').first.text_content(timeout=2000) or ""
@@ -380,8 +410,8 @@ class GoogleMapsScraper:
                 reviews_match = __import__('re').search(r"[\(]?([\d,]+)\s*review", reviews_text)
                 if reviews_match:
                     review_count = int(reviews_match.group(1).replace(",", ""))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Review count extraction failed: %s", exc)
 
             # Price level ($ to $$$$)
             price_level: str | None = None
@@ -398,16 +428,16 @@ class GoogleMapsScraper:
                             if pl:
                                 price_level = pl
                                 break
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Price level extraction failed: %s", exc)
 
             maps_url = ""
             try:
                 url = page.url
                 if "/maps/place/" in url:
                     maps_url = url.split("?")[0]
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Maps URL extraction failed: %s", exc)
 
             # Strip Google Maps material-icon unicode prefixes
             def _clean(t: str) -> str:
@@ -431,3 +461,7 @@ class GoogleMapsScraper:
 
 class DiscoveryError(Exception):
     """Raised when discovery fails."""
+
+
+class DiscoveryExhaustedError(DiscoveryError):
+    """Raised when all visible places have already been discovered."""

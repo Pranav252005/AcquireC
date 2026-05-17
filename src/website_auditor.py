@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 
 import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import Browser, sync_playwright
+
+logger = logging.getLogger(__name__)
 
 # Simple in-memory cache for audit results
 _audit_cache: dict[str, dict[str, Any]] = {}
@@ -57,13 +60,14 @@ class WebsiteAuditor:
                 self._score(result)
                 _set_cache(url, result)
                 return result
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Requests fast-path audit failed for %s: %s", url, exc)
 
         # Playwright path for JS-heavy sites
         try:
             self._audit_with_playwright(url, result)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Playwright audit failed for %s: %s", url, exc)
             _set_cache(url, {"has_website": True, "audit_failed": True})
             return {"has_website": True, "audit_failed": True}
 
@@ -180,7 +184,8 @@ class WebsiteAuditor:
             try:
                 if not img.get_attribute("srcset") and not img.get_attribute("sizes"):
                     non_responsive += 1
-            except Exception:
+            except Exception as exc:
+                logger.debug("Image responsive check failed: %s", exc)
                 continue
         if len(images) > 20 and non_responsive > len(images) * 0.5:
             result["layout_issues"].append(f"non_responsive_images_{non_responsive}/{len(images)}")
@@ -212,8 +217,8 @@ class WebsiteAuditor:
                     result["load_time_ms"] = max(result["load_time_ms"], js_load)
                     if js_load > 5000:
                         result["layout_issues"].append(f"slow_load_{js_load}ms")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Performance timing extraction failed: %s", exc)
 
         context.close()
 

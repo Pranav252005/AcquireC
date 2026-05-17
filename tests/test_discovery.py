@@ -84,3 +84,25 @@ class TestGoogleMapsScraper:
 
         source = inspect.getsource(GoogleMapsScraper.discover)
         assert "Could not locate or fill the Google Maps search box" in source
+
+    def test_discovery_exhausted_error_is_subclass(self) -> None:
+        """DiscoveryExhaustedError should be catchable as DiscoveryError."""
+        from src.discovery import DiscoveryExhaustedError
+
+        with pytest.raises(DiscoveryError):
+            raise DiscoveryExhaustedError("exhausted")
+
+    def test_discover_accepts_exclude_names(self) -> None:
+        """discover should accept an exclude_names parameter."""
+        import inspect
+
+        sig = inspect.signature(GoogleMapsScraper.discover)
+        assert "exclude_names" in sig.parameters
+
+    def test_url_name_parsing_skips_known_places(self) -> None:
+        """URLs containing known business names should be pre-filtered."""
+        import inspect
+
+        source = inspect.getsource(GoogleMapsScraper.discover)
+        assert "urllib.parse.unquote_plus" in source
+        assert "exclude_names" in source

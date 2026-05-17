@@ -67,3 +67,31 @@ class TestDashboard:
         response = client.get("/cities/Mumbai")
         assert response.status_code == 200
         assert "Mumbai" in response.text
+
+    def test_index_shows_discovery_alerts(self) -> None:
+        """Active discovery alerts should appear on the dashboard."""
+        from src.tracker import add_discovery_alert
+
+        override = app.dependency_overrides[get_db]
+        db = next(override())
+        add_discovery_alert(db, "Mumbai", "cafe", "No new cafes left.")
+        db.close()
+
+        client = TestClient(app)
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "No new cafes left." in response.text
+
+    def test_dismiss_alert_redirects(self) -> None:
+        """POST /alerts/{id}/dismiss should redirect to home."""
+        from src.tracker import add_discovery_alert
+
+        override = app.dependency_overrides[get_db]
+        db = next(override())
+        alert = add_discovery_alert(db, "Mumbai", "cafe", "No new cafes left.")
+        db.close()
+
+        client = TestClient(app)
+        response = client.post(f"/alerts/{alert.id}/dismiss", follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"] == "/"

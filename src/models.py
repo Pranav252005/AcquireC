@@ -197,6 +197,23 @@ class FollowUp(Base):
         return f"<FollowUp(id={self.id}, lead_id={self.lead_id}, day={self.sequence_day})>"
 
 
+class DiscoveryAlert(Base):
+    """Alerts shown in the dashboard when a city+category is exhausted."""
+
+    __tablename__ = "discovery_alerts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    city: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    category: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    alert_type: Mapped[str] = mapped_column(String(20), nullable=False, default="warning")
+    dismissed: Mapped[bool] = mapped_column(default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<DiscoveryAlert(city={self.city}, category={self.category}, type={self.alert_type})>"
+
+
 class LeadNote(Base):
     """Manual notes added to a lead."""
 

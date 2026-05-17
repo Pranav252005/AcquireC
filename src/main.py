@@ -2,8 +2,10 @@
 
 import argparse
 import logging
+import re
 import sys
 import time
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -21,7 +23,7 @@ from src.database import get_sessionmaker, init_db
 from src.logging_config import setup_logging
 
 setup_logging()
-from src.discovery import DiscoveryError, GoogleMapsScraper
+from src.discovery import DiscoveryError, DiscoveryExhaustedError, GoogleMapsScraper
 from src.follow_up import FollowUpEngine
 from src.messenger import EmailSender, WhatsAppError, WhatsAppSender
 from src.models import Lead, OutreachChannel, OutreachStatus
@@ -30,9 +32,11 @@ from src.researcher import LinkedInResearcher
 from src.website_auditor import WebsiteAuditor
 from src.summarizer import Summarizer
 from src.tracker import (
+    add_discovery_alert,
     get_all_cities,
     get_city_summary,
     get_hot_leads,
+    get_known_business_names,
     get_leads_by_stage,
     get_or_create_lead,
     is_already_contacted,
@@ -58,6 +62,129 @@ def _whatsapp_draft_path(city: str) -> Path:
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"{city.replace(' ', '_')}_{timestamp}.txt"
     return drafts_dir / filename
+
+
+def _check_browser_available() -> bool:
+    """Quick sanity check that Playwright chromium is installed and launchable."""
+    try:
+        from playwright.sync_api import sync_playwright
+        p = sync_playwright().start()
+        browser = p.chromium.launch()
+        browser.close()
+        p.stop()
+        return True
+    except Exception as exc:
+        logger.error("Browser check failed: %s", exc)
+        return False
+
+
+def _leads_markdown_path(city: str) -> Path:
+    """Return a file path for the structured markdown export."""
+    settings = get_settings()
+    drafts_dir = settings.whatsapp_drafts_path
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"{city.replace(' ', '_')}_{timestamp}.md"
+    return drafts_dir / filename
+
+
+def _save_leads_markdown(md_path: Path, leads_data: list[dict[str, Any]]) -> None:
+    """Save all lead details + proposed pitches to a structured Markdown file."""
+    lines: list[str] = [
+        f"# Lead Export — {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        "",
+        f"Total leads: {len(leads_data)}",
+        "",
+        "---",
+        "",
+    ]
+
+    for idx, item in enumerate(leads_data, 1):
+        lead = item["lead"]
+        pitch = item["pitch"]
+        membership = item.get("membership", "")
+        context = item.get("context", "")
+        audit = item.get("audit", {})
+
+        lines.extend([
+            f"## {idx}. {lead.business_name}",
+            "",
+            "| Field | Value |",
+            "|-------|-------|",
+            f"| **Business Name** | {lead.business_name} |",
+            f"| **City** | {lead.city} |",
+            f"| **Type** | {lead.business_type} |",
+            f"| **Address** | {lead.address} |",
+            f"| **Phone** | {lead.phone or 'N/A'} |",
+            f"| **Email** | {lead.email or 'N/A'} |",
+            f"| **Website** | {lead.website or 'N/A'} |",
+            f"| **Google Maps** | {lead.google_maps_url or 'N/A'} |",
+            f"| **Rating** | {lead.rating or 'N/A'} |",
+            f"| **Review Count** | {lead.review_count or 'N/A'} |",
+            f"| **Maturity Stage** | {lead.maturity_stage or 'N/A'} |",
+            f"| **Lead Score** | {lead.lead_score or 'N/A'} |",
+            f"| **Detected CMS** | {lead.detected_cms or 'N/A'} |",
+            f"| **Years in Business** | {lead.years_in_business or 'N/A'} |",
+            "",
+        ])
+
+        if audit:
+            score = audit.get("overall_score", "unknown")
+            issues = audit.get("layout_issues", []) + audit.get("old_tech_detected", [])
+            lines.extend([
+                "### Website Audit",
+                "",
+                f"- **Overall Score:** {score}",
+                f"- **Load Time:** {audit.get('load_time_ms', 'N/A')}ms",
+                f"- **HTTPS:** {'Yes' if audit.get('https') else 'No'}",
+                f"- **Mobile Friendly:** {'Yes' if audit.get('mobile_friendly') else 'No'}",
+            ])
+            if issues:
+                lines.append("- **Issues:**")
+                for issue in issues:
+                    lines.append(f"  - {issue}")
+            lines.append("")
+
+        if membership:
+            lines.extend([
+                "### Membership Concept",
+                "",
+                f"{membership}",
+                "",
+            ])
+
+        lines.extend([
+            "### Proposed Email",
+            "",
+            f"**To:** {lead.email or 'N/A'}",
+            f"**Subject:** A quick idea for {lead.business_name}'s next {lead.years_in_business or 'few'} years",
+            "",
+            "```",
+            f"{pitch}",
+            "```",
+            "",
+        ])
+
+        if lead.phone:
+            cleaned_phone = re.sub(r"[^\d]", "", lead.phone)
+            wa_link = f"https://wa.me/{cleaned_phone}?text={urllib.parse.quote(pitch[:200])}"
+            lines.extend([
+                "### Proposed WhatsApp Message",
+                "",
+                f"**To:** {lead.phone}",
+                f"**Link:** {wa_link}",
+                "",
+                "```",
+                f"{pitch}",
+                "```",
+                "",
+            ])
+
+        lines.extend([
+            "---",
+            "",
+        ])
+
+    md_path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def _append_whatsapp_draft(draft_path: Path, lead: Lead, pitch: str) -> None:
@@ -104,7 +231,8 @@ def _extract_email_from_website(website: str) -> str | None:
                     continue
                 if not lower.endswith((".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")):
                     return m
-        except Exception:
+        except Exception as exc:
+            logger.debug("Email extraction failed for %s: %s", url, exc)
             continue
     return None
 
@@ -143,12 +271,38 @@ def run_pipeline(
     try:
         pool = BrowserPool(headless=True)
         shared_browser = pool.get_browser()
-    except Exception:
+    except Exception as exc:
+        logger.warning("BrowserPool failed to start browser: %s", exc)
         pool = None
         shared_browser = None
     scraper = GoogleMapsScraper(headless=True, browser=shared_browser)
+    known_names = get_known_business_names(db, city, category)
     try:
-        raw_leads = scraper.discover(city, category, max_leads=max_leads * 3)
+        raw_leads = scraper.discover(
+            city, category, max_leads=max_leads * 3, exclude_names=known_names
+        )
+    except DiscoveryExhaustedError as exc:
+        console.print(
+            f"[bold orange3]⚠ {category.capitalize()} in {city} are already fully discovered. "
+            f"No new places left to find.[/bold orange3]"
+        )
+        add_discovery_alert(
+            db,
+            city=city,
+            category=category,
+            message=f"{category.capitalize()} in {city} have been fully discovered. No new places left.",
+            alert_type="warning",
+        )
+        if pool:
+            pool.close()
+        db.close()
+        return {
+            "exhausted": True,
+            "message": str(exc),
+            "city": city,
+            "category": category,
+            "leads": [],
+        }
     except DiscoveryError as exc:
         console.print(f"[red]Discovery failed: {exc}[/red]")
         if pool:
@@ -196,14 +350,38 @@ def run_pipeline(
     )
 
     if not leads_to_process:
-        console.print("[yellow]No new leads to process.[/yellow]")
+        console.print(
+            f"[bold orange3]⚠ All {category} in {city} have already been found. "
+            f"Nothing new to process.[/bold orange3]"
+        )
+        add_discovery_alert(
+            db,
+            city=city,
+            category=category,
+            message=f"{category.capitalize()} in {city} have been fully discovered. No new places left.",
+            alert_type="warning",
+        )
         db.close()
-        return {"found": 0, "sent": 0, "failed": 0, "skipped": skipped, "city": city, "category": category, "leads": []}
+        return {
+            "found": 0,
+            "sent": 0,
+            "failed": 0,
+            "skipped": skipped,
+            "city": city,
+            "category": category,
+            "leads": [],
+            "exhausted": True,
+        }
 
     # Research + Outreach
     researcher = LinkedInResearcher(headless=True, browser=shared_browser)
     email_sender = EmailSender() if "email" in channels else None
     follow_up_engine = FollowUpEngine() if enable_follow_up else None
+
+    # When no channels are selected, we export everything to a markdown file
+    export_mode = not channels
+    md_path: Path | None = _leads_markdown_path(city) if export_mode else None
+    md_data: list[dict[str, Any]] = []
 
     sent_count = 0
     failed_count = 0
@@ -248,8 +426,8 @@ def run_pipeline(
                 skip_count += 1
                 continue
 
-            # Skip if no contact info at all and we need to message
-            if not has_email and not has_phone:
+            # In export mode we keep leads even without contact info
+            if not export_mode and not has_email and not has_phone:
                 progress.update(task, description=f"[yellow]{data['business_name']} — no contact info, skipped[/yellow]")
                 skip_count += 1
                 continue
@@ -278,6 +456,18 @@ def run_pipeline(
 
             # Update kanban stage
             update_lead_stage(db, lead.id, "pitched")
+
+            # Export mode: collect data for markdown, skip interactive prompts
+            if export_mode:
+                md_data.append({
+                    "lead": lead,
+                    "pitch": pitch,
+                    "context": context,
+                    "membership": membership,
+                    "audit": audit or {},
+                })
+                progress.update(task, description=f"[green]{data['business_name']} — exported[/green]")
+                continue
 
             # Show pitch and ask (or auto-send)
             progress.stop()
@@ -357,12 +547,23 @@ def run_pipeline(
 
             progress.start()
 
+    # Save structured markdown report when running in export mode (no channels)
+    if export_mode and md_path and md_data:
+        try:
+            md_path.parent.mkdir(parents=True, exist_ok=True)
+            _save_leads_markdown(md_path, md_data)
+            console.print(f"[green]Report saved to {md_path}[/green]")
+        except Exception as exc:
+            console.print(f"[red]Failed to save markdown report: {exc}[/red]")
+
     if pool:
         pool.close()
     db.close()
     summary = f"[bold]Done:[/bold] {sent_count} sent, {failed_count} failed, {skip_count} skipped, {skipped} already contacted."
     if draft_path:
         summary += f"\n[cyan]Drafts saved to {draft_path}[/cyan]"
+    if export_mode and md_path and md_data:
+        summary += f"\n[green]Report saved to {md_path}[/green]"
     console.print(f"\n{summary}")
     result = {
         "found": len(leads_to_process),
@@ -375,6 +576,8 @@ def run_pipeline(
     }
     if draft_path:
         result["draft_path"] = str(draft_path)
+    if export_mode and md_path and md_data:
+        result["report_path"] = str(md_path)
     return result
 
 
@@ -398,6 +601,7 @@ def run_multi_pipeline(
     total_combos = len(cities) * len(categories)
     combo_idx = 0
 
+    exhausted_combos: list[tuple[str, str]] = []
     for city in cities:
         for category in categories:
             combo_idx += 1
@@ -418,8 +622,15 @@ def run_multi_pipeline(
                 total_sent += result.get("sent", 0)
                 total_failed += result.get("failed", 0)
                 total_skipped += result.get("skipped", 0)
+                if result.get("exhausted"):
+                    exhausted_combos.append((city, category))
             # Small delay between combos to avoid rate limits
             time.sleep(2)
+
+    if exhausted_combos:
+        console.print("\n[bold orange3]Exhausted combos (nothing new left):[/bold orange3]")
+        for ecity, ecat in exhausted_combos:
+            console.print(f"  • {ecat} in {ecity}")
 
     # Save daily report
     db = get_db()
@@ -453,6 +664,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     """Interactive run command."""
     console.print(Panel.fit("[bold green]Client Acquisition System[/bold green]"))
 
+    if not _check_browser_available():
+        console.print(
+            "[red]Playwright browser not available. "
+            "Please run: playwright install chromium[/red]"
+        )
+        return 1
+
     city_input = Prompt.ask("Which city/cities to focus on? (comma-separated for multiple)")
     cities = [c.strip() for c in city_input.split(",") if c.strip()]
     if not cities:
@@ -485,10 +703,6 @@ def cmd_run(args: argparse.Namespace) -> int:
         channels.append("email")
     if Confirm.ask("Send via WhatsApp?", default=False):
         channels.append("whatsapp")
-
-    if not channels:
-        console.print("[yellow]No channels selected. Exiting.[/yellow]")
-        return 0
 
     if len(cities) == 1 and len(categories) == 1:
         result = run_pipeline(cities[0], categories[0], max_leads, skip_contacted=skip_contacted, channels=channels)

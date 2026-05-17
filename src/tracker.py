@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from src.models import Lead, LeadNote, Outreach, OutreachChannel, OutreachStatus
+from src.models import DiscoveryAlert, Lead, LeadNote, Outreach, OutreachChannel, OutreachStatus
 
 
 def get_or_create_lead(
@@ -213,3 +213,60 @@ def get_outreach_stats(db: Session) -> dict[str, int]:
         elif status == OutreachStatus.PENDING:
             stats["pending"] = count
     return stats
+
+
+def get_known_business_names(db: Session, city: str, category: str | None = None) -> set[str]:
+    """Return a set of business names already stored for a city (and optionally category)."""
+    query = db.query(Lead.business_name).filter(Lead.city.ilike(city))
+    if category:
+        query = query.filter(Lead.business_type.ilike(category))
+    rows = query.all()
+    return {row.business_name for row in rows}
+
+
+def add_discovery_alert(
+    db: Session,
+    city: str,
+    category: str,
+    message: str,
+    alert_type: str = "warning",
+) -> DiscoveryAlert:
+    """Create a discovery alert (e.g. city+category exhausted)."""
+    alert = DiscoveryAlert(
+        city=city,
+        category=category,
+        message=message,
+        alert_type=alert_type,
+    )
+    db.add(alert)
+    db.commit()
+    db.refresh(alert)
+    return alert
+
+
+def get_active_discovery_alerts(db: Session, city: str | None = None) -> list[DiscoveryAlert]:
+    """Return non-dismissed discovery alerts, optionally filtered by city."""
+    query = db.query(DiscoveryAlert).filter(DiscoveryAlert.dismissed.is_(False))
+    if city:
+        query = query.filter(DiscoveryAlert.city.ilike(city))
+    return query.order_by(DiscoveryAlert.created_at.desc()).all()
+
+
+def dismiss_discovery_alert(db: Session, alert_id: int) -> DiscoveryAlert | None:
+    """Mark a discovery alert as dismissed."""
+    alert = db.query(DiscoveryAlert).filter_by(id=alert_id).first()
+    if alert:
+        alert.dismissed = True
+        db.commit()
+    return alert
+
+
+def clear_discovery_alerts(db: Session, city: str, category: str) -> int:
+    """Delete discovery alerts for a city+category (e.g. after reset)."""
+    count = (
+        db.query(DiscoveryAlert)
+        .filter(DiscoveryAlert.city.ilike(city), DiscoveryAlert.category.ilike(category))
+        .delete()
+    )
+    db.commit()
+    return count
