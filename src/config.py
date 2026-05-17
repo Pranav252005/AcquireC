@@ -37,6 +37,17 @@ class Settings(BaseSettings):
     ollama_url: str = Field(default="http://localhost:11434")
     ollama_model: str = Field(default="qwen2.5:9b")
 
+    # LLM provider selection
+    llm_provider: str = Field(default="local")
+
+    # API keys for cloud LLM connectors
+    openai_api_key: str = Field(default="")
+    anthropic_api_key: str = Field(default="")
+
+    # LLM connector settings
+    llm_timeout_ms: int = Field(default=30000)
+    llm_chat_format: str = Field(default="generic")
+
     # Vision agent toggle
     use_vision: bool = Field(default=True)
     vision_timeout_ms: int = Field(default=30000)
