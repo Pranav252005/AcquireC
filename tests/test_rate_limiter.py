@@ -11,14 +11,31 @@ from src.core.rate_limiter import RateLimitError, RateLimiter
 class TestRateLimiter:
     """Test suite for RateLimiter."""
 
-    @pytest.mark.asyncio
-    async def test_wait_enforces_delay(self) -> None:
+    def test_wait_enforces_delay(self) -> None:
         """wait should enforce min_delay between requests."""
+        import threading
+
         limiter = RateLimiter(min_delay=2.0)
+        results = []
+
+        def run_wait():
+            try:
+                asyncio.run(limiter.wait("proxy_1"))
+                results.append("ok")
+            except Exception as exc:
+                results.append(exc)
+
         with patch("asyncio.sleep") as mock_sleep:
-            await limiter.wait("proxy_1")
+            t = threading.Thread(target=run_wait)
+            t.start()
+            t.join()
+            assert results[-1] == "ok", results[-1]
             mock_sleep.assert_not_called()
-            await limiter.wait("proxy_1")
+
+            t = threading.Thread(target=run_wait)
+            t.start()
+            t.join()
+            assert results[-1] == "ok", results[-1]
             mock_sleep.assert_called_once()
             assert mock_sleep.call_args[0][0] > 0
 
