@@ -46,3 +46,17 @@ class TestDatabase:
             result = session.query(Lead).filter_by(city="Pune").first()
             assert result is not None
             assert result.business_name == "Beta Salon"
+
+    def test_get_engine_returns_postgres_when_configured(self, monkeypatch) -> None:
+        """get_engine should return a PostgreSQL engine when use_postgres is True."""
+        from src import database as db_module
+
+        class FakeSettings:
+            use_postgres = True
+            database_url = "postgresql://acquirec:pass@localhost:5432/acquirec"
+            db_uri = "sqlite:///should_not_be_used.db"
+
+        monkeypatch.setattr(db_module, "get_settings", lambda: FakeSettings())
+
+        engine = get_engine()
+        assert str(engine.url).startswith("postgresql://")

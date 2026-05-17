@@ -60,6 +60,13 @@ class Settings(BaseSettings):
 
     # Database
     db_path: str = Field(default="./data/leads.db")
+    database_url: str = Field(default="")
+    use_postgres: bool = Field(default=False)
+
+    # Redis & Celery
+    redis_url: str = Field(default="redis://localhost:6379/0")
+    celery_broker_url: str = Field(default="")
+    celery_result_backend: str = Field(default="")
 
     # WhatsApp
     whatsapp_user_data_dir: str = Field(default="./whatsapp_session")
@@ -85,7 +92,9 @@ class Settings(BaseSettings):
 
     @property
     def db_uri(self) -> str:
-        """Return SQLAlchemy SQLite URI."""
+        """Return SQLAlchemy database URI."""
+        if self.use_postgres and self.database_url:
+            return self.database_url
         path = Path(self.db_path).resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         return f"sqlite:///{path}"

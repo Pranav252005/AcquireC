@@ -8,9 +8,17 @@ from src.models import Base
 
 
 def get_engine(db_uri: str | None = None):
-    """Create SQLAlchemy engine."""
+    """Create SQLAlchemy engine.
+
+    Supports both SQLite (default) and PostgreSQL via configuration.
+    """
     if db_uri is None:
-        db_uri = get_settings().db_uri
+        settings = get_settings()
+        if settings.use_postgres and settings.database_url:
+            return create_engine(
+                settings.database_url, echo=False, future=True, pool_pre_ping=True
+            )
+        db_uri = settings.db_uri
     return create_engine(db_uri, echo=False, future=True)
 
 

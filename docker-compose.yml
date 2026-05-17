@@ -1,0 +1,38 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: acquirec
+      POSTGRES_USER: acquirec
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-acquirec123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  acquirec:
+    build: .
+    environment:
+      - DATABASE_URL=postgresql://acquirec:${DB_PASSWORD:-acquirec123}@postgres:5432/acquirec
+      - REDIS_URL=redis://redis:6379
+      - USE_POSTGRES=true
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./presets:/app/presets
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    command: >
+      sh -c "python -m src.main dashboard"
+
+volumes:
+  postgres_data:
