@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     proxy_server: str = Field(default="")
     proxy_username: str = Field(default="")
     proxy_password: str = Field(default="")
+    proxy_file: str = Field(default="")
+    proxy_min_delay: float = Field(default=2.0)
+    proxy_daily_limit: int = Field(default=500)
+    use_free_proxy_list: bool = Field(default=False)
 
     # Database
     db_path: str = Field(default="./data/leads.db")
