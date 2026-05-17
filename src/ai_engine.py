@@ -16,7 +16,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy.orm import Session
 
 from src.config import get_settings
-from src.models import Lead, PitchCache
+from src.models import Lead, PitchCache, _utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -215,8 +215,6 @@ class PitchCacheManager:
         )
         if cache:
             cache.hit_count += 1
-            from src.models import _utc_now
-
             cache.last_used_at = _utc_now()
             # Do not commit here; let caller manage transaction
             db.flush()

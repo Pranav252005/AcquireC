@@ -5,21 +5,21 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.models import Lead
-from src.researcher import LinkedInResearcher
+from src.researcher import WebsiteResearcher
 
 
-class TestLinkedInResearcher:
-    """Test suite for LinkedInResearcher."""
+class TestWebsiteResearcher:
+    """Test suite for WebsiteResearcher."""
 
     def test_init(self) -> None:
         """Should initialize with settings."""
-        r = LinkedInResearcher()
+        r = WebsiteResearcher()
         assert r.headless is True
         assert r.settings is not None
 
     def test_research_returns_dict(self) -> None:
         """research should return a dict with expected keys."""
-        r = LinkedInResearcher()
+        r = WebsiteResearcher()
         lead = Lead(
             id=1,
             city="Mumbai",
@@ -58,7 +58,7 @@ class TestLinkedInResearcher:
             address="D road",
             google_maps_url="https://maps.example.com/4",
         )
-        pitch = LinkedInResearcher._fallback_pitch(lead)
+        pitch = WebsiteResearcher._fallback_pitch(lead)
         assert "Alpha Clinic" in pitch
         assert "Delhi" in pitch
 
@@ -77,6 +77,6 @@ class TestLinkedInResearcher:
             "old_tech_detected": ["deprecated_tag_font"],
             "load_time_ms": 6200,
         }
-        pitch = LinkedInResearcher._fallback_pitch(lead, website_audit=audit)
+        pitch = WebsiteResearcher._fallback_pitch(lead, website_audit=audit)
         assert "Beta Shop" in pitch
         assert "missing_viewport_meta" in pitch

@@ -114,8 +114,11 @@ def annotate_screenshot(screenshot_path: Path, elements: list[dict[str, Any]], o
             continue
         draw.rectangle([x, y, x + w, y + h], outline="red", width=2)
         label = str(el["index"])
-        bbox = draw.textbbox((0, 0), label, font=font)
-        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        try:
+            bbox = draw.textbbox((0, 0), label, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        except Exception:
+            tw, th = len(label) * 8, 14
         draw.rectangle([x, y - th - 4, x + tw + 4, y], fill="red")
         draw.text((x + 2, y - th - 2), label, fill="white", font=font)
 

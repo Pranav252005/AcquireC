@@ -22,7 +22,7 @@ from src.models import Lead
 logger = logging.getLogger(__name__)
 
 
-class LinkedInResearcher:
+class WebsiteResearcher:
     """Research a business via its website and generate a pitch via the AI Engine."""
 
     def __init__(self, headless: bool = True, browser: Browser | None = None) -> None:
@@ -200,3 +200,7 @@ class LinkedInResearcher:
             f"customers your way?\n\n"
             f"Best regards"
         )
+
+
+# Backward-compatible alias
+LinkedInResearcher = WebsiteResearcher

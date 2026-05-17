@@ -29,7 +29,7 @@ from src.messenger import EmailSender, WhatsAppError, WhatsAppSender
 from src.models import Lead, OutreachChannel, OutreachStatus
 from src.presets import PresetLoader, PresetValidator
 from src.reports import list_report_dates, save_daily_report
-from src.researcher import LinkedInResearcher
+from src.researcher import WebsiteResearcher
 from src.summarizer import Summarizer
 from src.website_auditor import WebsiteAuditor
 from src.tracker import (
@@ -375,7 +375,7 @@ def run_pipeline(
         }
 
     # Research + Outreach
-    researcher = LinkedInResearcher(headless=True, browser=shared_browser)
+    researcher = WebsiteResearcher(headless=True, browser=shared_browser)
     email_sender = EmailSender() if "email" in channels else None
     follow_up_engine = FollowUpEngine() if enable_follow_up else None
 
@@ -827,7 +827,7 @@ def cmd_process_follow_ups(args: argparse.Namespace) -> int:
     """Process pending follow-ups that are due."""
     from datetime import datetime, timezone
     from src.follow_up import FollowUpEngine
-    from src.messenger import EmailSender, WhatsAppSender
+    from src.messenger import EmailSender
 
     db = get_db()
     engine = FollowUpEngine()
@@ -841,7 +841,6 @@ def cmd_process_follow_ups(args: argparse.Namespace) -> int:
     console.print(f"[bold]{len(pending)} follow-ups due.[/bold]")
 
     email_sender = EmailSender()
-    wa_sender = WhatsAppSender()
     sent = 0
     failed = 0
 
@@ -871,7 +870,6 @@ def cmd_process_follow_ups(args: argparse.Namespace) -> int:
             console.print(f"[red]✗ Follow-up failed for {lead.business_name}: {exc}[/red]")
 
     db.commit()
-    wa_sender.close()
     db.close()
     console.print(f"[bold]Done:[/bold] {sent} sent, {failed} failed.")
     return 0

@@ -103,7 +103,7 @@ class WhatsAppSender:
         return {
             "phone": cleaned,
             "message": message,
-            "link": f"https://wa.me/{cleaned}?text={requests_utils_quote(message)}",
+            "link": f"https://wa.me/{cleaned}?text={quote(message, safe='')}",
         }
 
     def send(self, phone: str, message: str) -> None:
