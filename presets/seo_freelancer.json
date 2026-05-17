@@ -1,0 +1,30 @@
+{
+  "id": "seo_freelancer",
+  "name": "SEO Freelancer",
+  "version": "1.0.0",
+  "author": "acquirec-team",
+  "description": "Find businesses that need SEO optimization",
+  "target": {
+    "categories": ["ecommerce", "real_estate", "lawyer", "dentist", "plumber", "hotel"],
+    "cities": ["auto_rotate"],
+    "countries": ["IN", "US", "UK", "AU"]
+  },
+  "scrapers": ["google_maps", "yelp"],
+  "pain_points": {
+    "detectors": [
+      {"id": "no_website", "weight": 0.9},
+      {"id": "poor_seo", "weight": 1.0},
+      {"id": "slow_load", "weight": 0.7}
+    ]
+  },
+  "pitch": {
+    "tone": "data_driven",
+    "max_length": 1000,
+    "must_include": ["search ranking", "Google", "organic traffic"],
+    "system_prompt": "You are an SEO expert helping local businesses rank higher on Google."
+  },
+  "follow_up": {
+    "sequence": "aggressive",
+    "channels": ["email"]
+  }
+}

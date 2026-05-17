@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     # Drafts
     whatsapp_drafts_dir: str = Field(default="./data/whatsapp_drafts")
 
+    # Presets
+    presets_dir: str = Field(default="./presets")
+
     @property
     def vlm_model_path(self) -> Path:
         """Return resolved path to the VLM weights file."""

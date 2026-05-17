@@ -1,0 +1,30 @@
+{
+  "id": "insurance_agent",
+  "name": "Insurance Agent",
+  "version": "1.0.0",
+  "author": "acquirec-team",
+  "description": "Find insurance agencies that need better client acquisition",
+  "target": {
+    "categories": ["insurance", "financial_advisor", "accountant"],
+    "cities": ["auto_rotate"],
+    "countries": ["IN", "US", "UK", "AU"]
+  },
+  "scrapers": ["google_maps", "yellow_pages"],
+  "pain_points": {
+    "detectors": [
+      {"id": "no_online_quotes", "weight": 1.0},
+      {"id": "no_crm", "weight": 0.9},
+      {"id": "poor_website", "weight": 0.7}
+    ]
+  },
+  "pitch": {
+    "tone": "trustworthy_professional",
+    "max_length": 1000,
+    "must_include": ["quotes", "leads", "trust"],
+    "system_prompt": "You are a fintech consultant helping insurance agencies generate leads online."
+  },
+  "follow_up": {
+    "sequence": "b2b_enterprise",
+    "channels": ["email"]
+  }
+}

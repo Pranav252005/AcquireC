@@ -1,0 +1,29 @@
+{
+  "id": "social_media_manager",
+  "name": "Social Media Manager",
+  "version": "1.0.0",
+  "author": "acquirec-team",
+  "description": "Find businesses that need social media presence",
+  "target": {
+    "categories": ["restaurant", "cafe", "salon", "gym", "retail", "boutique"],
+    "cities": ["auto_rotate"],
+    "countries": ["IN", "US", "UK", "AU"]
+  },
+  "scrapers": ["google_maps", "yelp"],
+  "pain_points": {
+    "detectors": [
+      {"id": "no_social_media", "weight": 1.0},
+      {"id": "outdated_website", "weight": 0.6}
+    ]
+  },
+  "pitch": {
+    "tone": "trendy_friendly",
+    "max_length": 1100,
+    "must_include": ["Instagram", "engagement", "followers"],
+    "system_prompt": "You are a social media strategist helping local businesses grow their online following."
+  },
+  "follow_up": {
+    "sequence": "gentle",
+    "channels": ["email", "whatsapp"]
+  }
+}

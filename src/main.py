@@ -27,10 +27,11 @@ from src.discovery import DiscoveryError, DiscoveryExhaustedError, GoogleMapsScr
 from src.follow_up import FollowUpEngine
 from src.messenger import EmailSender, WhatsAppError, WhatsAppSender
 from src.models import Lead, OutreachChannel, OutreachStatus
+from src.presets import PresetLoader, PresetValidator
 from src.reports import list_report_dates, save_daily_report
 from src.researcher import LinkedInResearcher
-from src.website_auditor import WebsiteAuditor
 from src.summarizer import Summarizer
+from src.website_auditor import WebsiteAuditor
 from src.tracker import (
     add_discovery_alert,
     get_all_cities,
@@ -894,6 +895,49 @@ def cmd_reports(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_presets(args: argparse.Namespace) -> int:
+    """Handle preset subcommands."""
+    from rich.table import Table
+
+    loader = PresetLoader()
+
+    if args.list_presets:
+        presets = loader.list_presets()
+        if not presets:
+            console.print("[yellow]No presets found.[/yellow]")
+            return 0
+
+        table = Table(title="Presets")
+        table.add_column("Name", style="cyan")
+        table.add_column("ID", style="dim")
+        table.add_column("Version", style="green")
+        table.add_column("Description", style="white")
+
+        for preset in presets:
+            table.add_row(
+                preset.get("name", "N/A"),
+                preset.get("id", "N/A"),
+                preset.get("version", "N/A"),
+                preset.get("description", "") or "",
+            )
+        console.print(table)
+        return 0
+
+    if args.show_preset:
+        preset_id: str = args.show_preset
+        try:
+            preset = loader.load(preset_id)
+        except Exception as exc:
+            console.print(f"[red]Failed to load preset '{preset_id}': {exc}[/red]")
+            return 1
+
+        console.print_json(data=preset)
+        return 0
+
+    console.print("[yellow]Use --list or --show <preset_id>.[/yellow]")
+    return 0
+
+
 def main() -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description="Client Acquisition System")
@@ -942,6 +986,12 @@ def main() -> int:
     # reports
     reports_parser = subparsers.add_parser("reports", help="List daily reports")
     reports_parser.set_defaults(func=cmd_reports)
+
+    # presets
+    presets_parser = subparsers.add_parser("presets", help="Manage presets")
+    presets_parser.add_argument("--list", dest="list_presets", action="store_true", help="List all presets")
+    presets_parser.add_argument("--show", dest="show_preset", metavar="PRESET_ID", help="Show a single preset as JSON")
+    presets_parser.set_defaults(func=cmd_presets)
 
     args = parser.parse_args()
     if not args.command:
