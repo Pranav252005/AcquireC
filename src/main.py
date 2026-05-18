@@ -26,7 +26,7 @@ setup_logging()
 from src.discovery import DiscoveryError, DiscoveryExhaustedError, GoogleMapsScraper
 from src.follow_up import FollowUpEngine
 from src.messenger import EmailSender, WhatsAppError, WhatsAppSender
-from src.models import Lead, OutreachChannel, OutreachStatus
+from src.models import FollowUp, Lead, LeadNote, Outreach, OutreachChannel, OutreachStatus
 from src.presets import PresetLoader, PresetValidator
 from src.reports import list_report_dates, save_daily_report
 from src.researcher import WebsiteResearcher
