@@ -2,7 +2,7 @@
 
 from sqlalchemy import inspect
 
-from src.database import get_engine, get_sessionmaker, init_db
+from src.database import get_app_config, get_engine, get_sessionmaker, init_db, set_app_config
 from src.models import Base, Lead
 
 
@@ -46,6 +46,18 @@ class TestDatabase:
             result = session.query(Lead).filter_by(city="Pune").first()
             assert result is not None
             assert result.business_name == "Beta Salon"
+
+    def test_app_config_round_trip(self, tmp_path) -> None:
+        """AppConfig should support get/set."""
+        db_file = tmp_path / "test_config.db"
+        engine = init_db(f"sqlite:///{db_file}")
+        Session = get_sessionmaker(engine)
+        with Session() as session:
+            assert get_app_config(session, "foo") is None
+            set_app_config(session, "foo", "bar")
+            assert get_app_config(session, "foo") == "bar"
+            set_app_config(session, "foo", "baz")
+            assert get_app_config(session, "foo") == "baz"
 
     def test_get_engine_returns_postgres_when_configured(self, monkeypatch) -> None:
         """get_engine should return a PostgreSQL engine when use_postgres is True."""

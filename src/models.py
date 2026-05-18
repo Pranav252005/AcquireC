@@ -230,3 +230,16 @@ class LeadNote(Base):
 
     def __repr__(self) -> str:
         return f"<LeadNote(id={self.id}, lead_id={self.lead_id})>"
+
+
+class AppConfig(Base):
+    """Runtime-editable configuration stored in SQLite."""
+
+    __tablename__ = "app_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utc_now, onupdate=_utc_now, nullable=False
+    )
