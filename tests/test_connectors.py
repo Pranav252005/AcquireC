@@ -770,29 +770,105 @@ class TestOllamaConnector:
 
 
 class TestOpenRouterConnector:
-    """Tests for OpenRouterConnector stub."""
+    """Tests for OpenRouterConnector."""
 
-    def test_generate_pitch_raises_not_implemented(self) -> None:
-        """generate_pitch should raise NotImplementedError."""
-        conn = OpenRouterConnector()
-        ctx = BusinessContext(
-            business_type="cafe",
-            maturity_stage=None,
-            website_score=None,
-            years_in_business=None,
-            city="Pune",
-            name="Test",
-            has_website=False,
-            website_issues=[],
+    def test_health_check_with_key(self, monkeypatch) -> None:
+        """health_check should return True when API key is set and valid."""
+        monkeypatch.setattr(
+            "src.connectors.llm.openrouter.get_settings",
+            lambda: MagicMock(openrouter_api_key="sk-or-test"),
         )
-        with pytest.raises(NotImplementedError, match="OpenRouter connector not yet implemented"):
-            conn.generate_pitch(ctx)
+        conn = OpenRouterConnector()
+        assert conn.health_check() is True
 
-    def test_health_check_returns_false(self) -> None:
-        """health_check should always return False."""
+    def test_health_check_without_key(self, monkeypatch) -> None:
+        """health_check should return False when API key is empty."""
+        monkeypatch.setattr(
+            "src.connectors.llm.openrouter.get_settings",
+            lambda: MagicMock(openrouter_api_key=""),
+        )
         conn = OpenRouterConnector()
         assert conn.health_check() is False
 
-    def test_can_use_returns_false(self) -> None:
-        """can_use should always return False."""
+    def test_can_use_with_key(self, monkeypatch) -> None:
+        """can_use should return True when API key is set."""
+        monkeypatch.setattr(
+            "src.connectors.llm.openrouter.get_settings",
+            lambda: MagicMock(openrouter_api_key="sk-or-test"),
+        )
+        assert OpenRouterConnector.can_use() is True
+
+    def test_can_use_without_key(self, monkeypatch) -> None:
+        """can_use should return False when API key is empty."""
+        monkeypatch.setattr(
+            "src.connectors.llm.openrouter.get_settings",
+            lambda: MagicMock(openrouter_api_key=""),
+        )
         assert OpenRouterConnector.can_use() is False
+
+    def test_generate_pitch_returns_pitch_result(self, monkeypatch) -> None:
+        """generate_pitch should return PitchResult when API responds."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps({
+            "pitch_text": "OpenRouter pitch",
+            "membership_idea": "Membership",
+            "website_benefits": "Benefits",
+            "model_used": "openrouter",
+        })
+        mock_client.chat.completions.create.return_value = mock_response
+
+        monkeypatch.setattr(
+            "src.connectors.llm.openrouter.get_settings",
+            lambda: MagicMock(openrouter_api_key="sk-or-test", llm_timeout_ms=30000),
+        )
+        monkeypatch.setattr("openai.OpenAI", lambda api_key, base_url: mock_client)
+
+        conn = OpenRouterConnector()
+        ctx = BusinessContext(
+            business_type="cafe",
+            maturity_stage="growing",
+            website_score="needs_work",
+            years_in_business=2,
+            city="Mumbai",
+            name="Delta Cafe",
+            has_website=False,
+            website_issues=["missing_meta"],
+        )
+        result = conn.generate_pitch(ctx)
+        assert isinstance(result, PitchResult)
+        assert result.pitch_text == "OpenRouter pitch"
+        assert result.membership_idea == "Membership"
+        assert result.model_used == "openrouter"
+
+    def test_generate_pitch_api_error(self, monkeypatch) -> None:
+        """generate_pitch should raise ConnectorError on APIError."""
+        from openai import APIError
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = APIError(
+            message="bad request",
+            request=MagicMock(),
+            body=None,
+        )
+
+        monkeypatch.setattr(
+            "src.connectors.llm.openrouter.get_settings",
+            lambda: MagicMock(openrouter_api_key="sk-or-test", llm_timeout_ms=30000),
+        )
+        monkeypatch.setattr("openai.OpenAI", lambda api_key, base_url: mock_client)
+
+        conn = OpenRouterConnector()
+        ctx = BusinessContext(
+            business_type="cafe",
+            maturity_stage="growing",
+            website_score="needs_work",
+            years_in_business=2,
+            city="Mumbai",
+            name="Delta Cafe",
+            has_website=False,
+            website_issues=["missing_meta"],
+        )
+        with pytest.raises(ConnectorError, match="OpenRouter API request failed"):
+            conn.generate_pitch(ctx)
