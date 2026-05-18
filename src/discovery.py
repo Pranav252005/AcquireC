@@ -10,6 +10,7 @@ from playwright.sync_api import Browser, sync_playwright
 
 logger = logging.getLogger(__name__)
 
+from src.filters import LeadQualityFilter
 from src.vision_mapper import (
     PageMapError,
     build_page_map,
@@ -262,6 +263,9 @@ class GoogleMapsScraper:
                         name = data["business_name"]
                         if name in excluded:
                             logger.debug("Skipping already-known business: %s", name)
+                            continue
+                        if LeadQualityFilter.is_blocked_name(name, category):
+                            logger.info("Skipping blocked business: %s", name)
                             continue
                         key = (city, name)
                         if key not in seen_keys:

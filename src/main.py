@@ -791,6 +791,25 @@ def cmd_reset(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_wipe_leads(args: argparse.Namespace) -> int:
+    """Delete all leads and related data from the database."""
+    db = get_db()
+    count = db.query(Lead).count()
+    if count == 0:
+        console.print("[yellow]No leads to wipe.[/yellow]")
+        db.close()
+        return 0
+    if Confirm.ask(f"Delete ALL {count} leads? This cannot be undone."):
+        db.query(LeadNote).delete(synchronize_session=False)
+        db.query(FollowUp).delete(synchronize_session=False)
+        db.query(Outreach).delete(synchronize_session=False)
+        db.query(Lead).delete(synchronize_session=False)
+        db.commit()
+        console.print(f"[green]Deleted {count} leads.[/green]")
+    db.close()
+    return 0
+
+
 def cmd_hot_leads(args: argparse.Namespace) -> int:
     """Show hot leads sorted by score."""
     db = get_db()
@@ -984,6 +1003,10 @@ def main() -> int:
     # reports
     reports_parser = subparsers.add_parser("reports", help="List daily reports")
     reports_parser.set_defaults(func=cmd_reports)
+
+    # wipe-leads
+    wipe_parser = subparsers.add_parser("wipe-leads", help="Delete all leads from the database")
+    wipe_parser.set_defaults(func=cmd_wipe_leads)
 
     # presets
     presets_parser = subparsers.add_parser("presets", help="Manage presets")
