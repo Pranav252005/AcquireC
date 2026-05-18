@@ -95,3 +95,33 @@ class TestDashboard:
         response = client.post(f"/alerts/{alert.id}/dismiss", follow_redirects=False)
         assert response.status_code == 303
         assert response.headers["location"] == "/"
+
+    def test_settings_page(self) -> None:
+        """GET /settings should return the settings form."""
+        client = TestClient(app)
+        response = client.get("/settings")
+        assert response.status_code == 200
+        assert "Local Model Path" in response.text
+        assert "OpenRouter API Key" in response.text
+
+    def test_settings_save(self) -> None:
+        """POST /settings should persist config to the DB."""
+        client = TestClient(app)
+        response = client.post(
+            "/settings",
+            data={
+                "llm_provider": "openrouter",
+                "openrouter_api_key": "sk-or-test",
+                "local_model_path": "/tmp/model.gguf",
+            },
+        )
+        assert response.status_code == 200
+        assert "Settings saved successfully" in response.text
+
+        # Verify DB was updated
+        override = app.dependency_overrides[get_db]
+        db = next(override())
+        from src.database import get_app_config
+        assert get_app_config(db, "llm_provider") == "openrouter"
+        assert get_app_config(db, "openrouter_api_key") == "sk-or-test"
+        db.close()

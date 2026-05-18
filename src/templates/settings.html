@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Settings — Client Acquisition Dashboard{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <h1 class="text-2xl font-bold text-gray-900 mb-6">Settings</h1>
+
+    {% if saved %}
+    <div class="mb-6 bg-green-50 border-l-4 border-green-500 rounded-lg p-4">
+        <p class="text-sm text-green-800 font-medium">Settings saved successfully.</p>
+    </div>
+    {% endif %}
+
+    <form action="/settings" method="post" class="bg-white shadow-sm rounded-lg border border-gray-200 p-6 space-y-6">
+        <div>
+            <label for="llm_provider" class="block text-sm font-medium text-gray-700 mb-1">AI Provider</label>
+            <select name="llm_provider" id="llm_provider"
+                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2">
+                <option value="local" {% if config.llm_provider == 'local' %}selected{% endif %}>Local (llama-cpp-python)</option>
+                <option value="openai" {% if config.llm_provider == 'openai' %}selected{% endif %}>OpenAI</option>
+                <option value="anthropic" {% if config.llm_provider == 'anthropic' %}selected{% endif %}>Anthropic</option>
+                <option value="openrouter" {% if config.llm_provider == 'openrouter' %}selected{% endif %}>OpenRouter</option>
+                <option value="ollama" {% if config.llm_provider == 'ollama' %}selected{% endif %}>Ollama</option>
+            </select>
+            <p class="mt-1 text-xs text-gray-500">Select which AI backend to use for pitch generation.</p>
+        </div>
+
+        <div class="border-t border-gray-100 pt-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Local Model Paths</h2>
+            <div class="grid grid-cols-1 gap-4">
+                <div>
+                    <label for="local_model_path" class="block text-sm font-medium text-gray-700 mb-1">Local Model Path</label>
+                    <input type="text" name="local_model_path" id="local_model_path" value="{{ config.local_model_path or '' }}"
+                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+                        placeholder="/path/to/model.gguf">
+                </div>
+                <div>
+                    <label for="vlm_model_dir" class="block text-sm font-medium text-gray-700 mb-1">VLM Model Directory</label>
+                    <input type="text" name="vlm_model_dir" id="vlm_model_dir" value="{{ config.vlm_model_dir or '' }}"
+                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+                        placeholder="/path/to/vlm-dir">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="vlm_model_file" class="block text-sm font-medium text-gray-700 mb-1">VLM Model File</label>
+                        <input type="text" name="vlm_model_file" id="vlm_model_file" value="{{ config.vlm_model_file or '' }}"
+                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2">
+                    </div>
+                    <div>
+                        <label for="vlm_mmproj_file" class="block text-sm font-medium text-gray-700 mb-1">VLM MMPROJ File</label>
+                        <input type="text" name="vlm_mmproj_file" id="vlm_mmproj_file" value="{{ config.vlm_mmproj_file or '' }}"
+                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="border-t border-gray-100 pt-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">API Keys</h2>
+            <div class="grid grid-cols-1 gap-4">
+                <div>
+                    <label for="openai_api_key" class="block text-sm font-medium text-gray-700 mb-1">OpenAI API Key</label>
+                    <input type="password" name="openai_api_key" id="openai_api_key" value="{{ config.openai_api_key or '' }}"
+                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+                        placeholder="sk-...">
+                </div>
+                <div>
+                    <label for="anthropic_api_key" class="block text-sm font-medium text-gray-700 mb-1">Anthropic API Key</label>
+                    <input type="password" name="anthropic_api_key" id="anthropic_api_key" value="{{ config.anthropic_api_key or '' }}"
+                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+                        placeholder="sk-ant-...">
+                </div>
+                <div>
+                    <label for="openrouter_api_key" class="block text-sm font-medium text-gray-700 mb-1">OpenRouter API Key</label>
+                    <input type="password" name="openrouter_api_key" id="openrouter_api_key" value="{{ config.openrouter_api_key or '' }}"
+                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+                        placeholder="sk-or-...">
+                </div>
+            </div>
+        </div>
+
+        <div class="border-t border-gray-100 pt-6">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Ollama</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="ollama_url" class="block text-sm font-medium text-gray-700 mb-1">Ollama URL</label>
+                    <input type="text" name="ollama_url" id="ollama_url" value="{{ config.ollama_url or '' }}"
+                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+                        placeholder="http://localhost:11434">
+                </div>
+                <div>
+                    <label for="ollama_model" class="block text-sm font-medium text-gray-700 mb-1">Ollama Model</label>
+                    <input type="text" name="ollama_model" id="ollama_model" value="{{ config.ollama_model or '' }}"
+                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+                        placeholder="qwen2.5:9b">
+                </div>
+            </div>
+        </div>
+
+        <div class="pt-4">
+            <button type="submit"
+                class="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                Save Settings
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

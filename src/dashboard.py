@@ -330,6 +330,61 @@ def dismiss_alert(alert_id: int, db: Session = Depends(get_db)):
     return RedirectResponse(url="/", status_code=303)
 
 
+@app.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request, db: Session = Depends(get_db)):
+    """Show the settings form."""
+    from src.config import get_db_settings
+
+    cfg = get_db_settings(db)
+    alerts = get_active_discovery_alerts(db)
+    return templates.TemplateResponse(
+        request, "settings.html", {"config": cfg, "alerts": alerts}
+    )
+
+
+@app.post("/settings", response_class=HTMLResponse)
+def settings_save(
+    request: Request,
+    local_model_path: str = Form(""),
+    vlm_model_dir: str = Form(""),
+    vlm_model_file: str = Form(""),
+    vlm_mmproj_file: str = Form(""),
+    llm_provider: str = Form("local"),
+    openai_api_key: str = Form(""),
+    anthropic_api_key: str = Form(""),
+    openrouter_api_key: str = Form(""),
+    ollama_url: str = Form(""),
+    ollama_model: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Save settings to the DB and refresh the in-memory cache."""
+    from src.config import refresh_settings
+    from src.database import set_app_config
+
+    fields = {
+        "local_model_path": local_model_path,
+        "vlm_model_dir": vlm_model_dir,
+        "vlm_model_file": vlm_model_file,
+        "vlm_mmproj_file": vlm_mmproj_file,
+        "llm_provider": llm_provider,
+        "openai_api_key": openai_api_key,
+        "anthropic_api_key": anthropic_api_key,
+        "openrouter_api_key": openrouter_api_key,
+        "ollama_url": ollama_url,
+        "ollama_model": ollama_model,
+    }
+    for k, v in fields.items():
+        set_app_config(db, k, v)
+
+    refresh_settings()
+    alerts = get_active_discovery_alerts(db)
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {"config": fields, "alerts": alerts, "saved": True},
+    )
+
+
 def run_dashboard() -> None:
     """Start the dashboard server."""
     import uvicorn
