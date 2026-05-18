@@ -108,3 +108,48 @@ class TestAIPitchEngine:
         assert "website_benefits" in result
         assert "Cafe Largo" in result["pitch_text"]
         assert "Mumbai" in result["pitch_text"]
+
+    def test_generate_routes_to_connector_when_provider_set(self, monkeypatch, temp_db) -> None:
+        """When llm_provider is 'openai', generate should use connector registry."""
+        mock_result = MagicMock()
+        mock_result.pitch_text = (
+            "This is a connector-generated pitch about building a professional website "
+            "for your cafe. We specialize in modern, mobile-friendly designs that help "
+            "local businesses attract more customers and grow revenue significantly online."
+        )
+        mock_result.membership_idea = (
+            "Coffee Club: a monthly subscription where members get unlimited black coffee "
+            "and 20%% off pastries. Managed entirely through the website."
+        )
+        mock_result.website_benefits = (
+            "- Online menu with photos\n- Table booking system\n- Customer review aggregation"
+        )
+
+        mock_connector = MagicMock()
+        mock_connector.generate_pitch.return_value = mock_result
+
+        mock_registry = MagicMock()
+        mock_registry.get.return_value = mock_connector
+
+        monkeypatch.setattr(
+            "src.ai_engine.get_settings",
+            lambda: MagicMock(llm_provider="openai"),
+        )
+        monkeypatch.setattr("src.ai_engine.ConnectorRegistry", lambda: mock_registry)
+
+        engine = AIPitchEngine()
+        ctx = BusinessContext(
+            name="Test",
+            city="Pune",
+            business_type="cafe",
+            years_in_business=2,
+            has_website=False,
+            website_score="poor",
+            website_issues=["slow"],
+            linkedin_summary="",
+            offerings="",
+        )
+        result = engine.generate(temp_db, ctx)
+        assert "connector-generated pitch" in result["pitch_text"]
+        mock_registry.get.assert_called_once_with("openai")
+        mock_connector.generate_pitch.assert_called_once()

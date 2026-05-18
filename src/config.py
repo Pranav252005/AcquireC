@@ -124,3 +124,29 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return cached settings instance."""
     return Settings()
+
+
+def refresh_settings() -> Settings:
+    """Clear the settings cache and reload from .env."""
+    get_settings.cache_clear()
+    return get_settings()
+
+
+def get_db_settings(db) -> dict[str, str]:
+    """Return runtime DB settings overlaid on top of .env defaults."""
+    from src.database import get_app_config
+
+    keys = [
+        "local_model_path",
+        "vlm_model_dir",
+        "vlm_model_file",
+        "vlm_mmproj_file",
+        "llm_provider",
+        "openai_api_key",
+        "anthropic_api_key",
+        "openrouter_api_key",
+        "ollama_url",
+        "ollama_model",
+    ]
+    defaults = get_settings()
+    return {k: get_app_config(db, k) or getattr(defaults, k, "") for k in keys}

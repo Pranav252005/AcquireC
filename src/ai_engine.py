@@ -16,6 +16,8 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy.orm import Session
 
 from src.config import get_settings
+from src.connectors.llm.base import BusinessContext as ConnectorBusinessContext
+from src.connectors.llm.registry import ConnectorRegistry
 from src.models import Lead, PitchCache, _utc_now
 
 logger = logging.getLogger(__name__)
@@ -339,7 +341,19 @@ class AIPitchEngine:
             logger.info("Pitch cache hit for %s (%s)", ctx.name, ctx.business_type)
             return cached
 
-        # 2. Try primary model with retries
+        provider = self.settings.llm_provider
+        if provider in ("local", "auto", ""):
+            return self._generate_local_chain(db, ctx, max_retries)
+
+        return self._generate_via_connector(db, ctx, provider)
+
+    def _generate_local_chain(
+        self,
+        db: Session,
+        ctx: BusinessContext,
+        max_retries: int = 3,
+    ) -> dict[str, str]:
+        """Original fallback chain: local → VLM → Ollama → template."""
         system_prompt = self.renderer.render_system()
         user_prompt = self.renderer.render_user(ctx)
 
@@ -358,12 +372,11 @@ class AIPitchEngine:
                     )
                     return result
                 logger.warning("Pitch validation failed (attempt %d): %s", attempt, errors)
-                # Feed errors back for retry
                 user_prompt += f"\n\nPrevious attempt had these issues: {errors}. Please fix them."
             except Exception as exc:
                 logger.warning("Primary model failed (attempt %d): %s", attempt, exc)
 
-        # 3. Try VLM fallback (same weights but with vision projector loaded)
+        # VLM fallback
         try:
             result = self._try_vlm_fallback(system_prompt, user_prompt)
             errors = self.validator.validate(result)
@@ -380,7 +393,7 @@ class AIPitchEngine:
         except Exception as exc:
             logger.warning("VLM fallback failed: %s", exc)
 
-        # 4. Try Ollama API fallback
+        # Ollama fallback
         try:
             result = self._try_ollama_fallback(system_prompt, user_prompt)
             errors = self.validator.validate(result)
@@ -397,8 +410,51 @@ class AIPitchEngine:
         except Exception as exc:
             logger.warning("Ollama fallback failed: %s", exc)
 
-        # 5. Template fallback
         logger.info("All AI models failed; using template fallback for %s", ctx.name)
+        return self._template_fallback(ctx)
+
+    def _generate_via_connector(
+        self,
+        db: Session,
+        ctx: BusinessContext,
+        provider: str,
+    ) -> dict[str, str]:
+        """Generate using a cloud connector (openai, anthropic, openrouter)."""
+        registry = ConnectorRegistry()
+        connector = registry.get(provider)
+        conn_ctx = ConnectorBusinessContext(
+            business_type=ctx.business_type,
+            maturity_stage=ctx.maturity_stage,
+            website_score=ctx.website_score,
+            years_in_business=ctx.years_in_business,
+            city=ctx.city,
+            name=ctx.name,
+            has_website=ctx.has_website,
+            website_issues=ctx.website_issues,
+        )
+        try:
+            result = connector.generate_pitch(conn_ctx)
+            output = {
+                "pitch_text": result.pitch_text,
+                "context_summary": f"Generated via {provider}",
+                "membership_idea": result.membership_idea,
+                "website_benefits": result.website_benefits,
+            }
+            errors = self.validator.validate(output)
+            if not errors:
+                self.cache.save(
+                    db,
+                    ctx,
+                    result.pitch_text,
+                    result.membership_idea,
+                    result.website_benefits,
+                    model_used=provider,
+                )
+                return output
+            logger.warning("Pitch validation failed for %s: %s", provider, errors)
+        except Exception as exc:
+            logger.warning("Connector %s failed: %s", provider, exc)
+
         return self._template_fallback(ctx)
 
     def _try_primary(self, system_prompt: str, user_prompt: str) -> dict[str, str]:
