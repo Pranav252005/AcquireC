@@ -326,7 +326,10 @@ def run_pipeline(
                 extracted = _extract_email_from_website(website)
                 if extracted:
                     data["email"] = extracted
-            if audit.get("overall_score") == "good" and not audit.get("audit_failed"):
+            if audit.get("platform_page"):
+                console.print(f"[dim]{data['business_name']}: Platform page (Swiggy/Zomato/etc), treating as no website.[/dim]")
+                data["website"] = None
+            elif audit.get("overall_score") == "good" and not audit.get("audit_failed"):
                 console.print(f"[dim]{data['business_name']}: Website looks modern, skipping.[/dim]")
                 website_skipped += 1
                 continue

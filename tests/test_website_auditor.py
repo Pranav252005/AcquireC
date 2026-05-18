@@ -144,3 +144,31 @@ class TestWebsiteAuditor:
 
         assert result["has_website"] is True
         assert result.get("audit_failed") is True
+
+    def test_audit_platform_page(self) -> None:
+        """Should mark Swiggy/Zomato URLs as platform_page with poor score."""
+        auditor = WebsiteAuditor()
+        result = auditor.audit("https://www.swiggy.com/restaurants/foo")
+
+        assert result.get("platform_page") is True
+        assert result["overall_score"] == "poor"
+        assert "platform_page_not_real_website" in result["layout_issues"]
+
+    def test_audit_modern_cms_leniency(self) -> None:
+        """Should score modern CMS sites as good even with minor bloat."""
+        auditor = WebsiteAuditor()
+        mock_page = _build_mock_page(
+            url="https://nextjs-shop.com",
+            node_count=3500,  # would normally trigger bloat
+            perf_timing={"navStart": 1000, "loadEnd": 2500},
+            viewport_count=1,
+        )
+        # Inject nextjs marker into page content so _detect_cms_from_html picks it up
+        mock_page.content.return_value = '<html><script>__NEXT_DATA__ = {}</script></html>'
+        mock_ctx = _patch_sync_playwright(mock_page)
+
+        with patch("src.website_auditor.sync_playwright", return_value=mock_ctx):
+            result = auditor.audit("https://nextjs-shop.com")
+
+        assert result["detected_cms"] == "nextjs"
+        assert result["overall_score"] == "good"

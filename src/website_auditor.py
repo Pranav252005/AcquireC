@@ -10,6 +10,8 @@ import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import Browser, sync_playwright
 
+from src.filters import LeadQualityFilter
+
 logger = logging.getLogger(__name__)
 
 # Simple in-memory cache for audit results
@@ -41,7 +43,23 @@ class WebsiteAuditor:
         if cached is not None:
             return cached
 
-        result: dict[str, Any] = {
+        # Platform pages (Swiggy, Zomato, etc.) are not real business websites
+        if LeadQualityFilter.is_platform_only_website(url):
+            result: dict[str, Any] = {
+                "has_website": True,
+                "mobile_friendly": True,
+                "https": url.startswith("https://"),
+                "load_time_ms": 0,
+                "old_tech_detected": [],
+                "layout_issues": ["platform_page_not_real_website"],
+                "overall_score": "poor",
+                "detected_cms": None,
+                "platform_page": True,
+            }
+            _set_cache(url, result)
+            return result
+
+        result = {
             "has_website": True,
             "mobile_friendly": True,
             "https": url.startswith("https://"),
@@ -274,14 +292,29 @@ class WebsiteAuditor:
     @staticmethod
     def _score(result: dict[str, Any]) -> None:
         issues = len(result["old_tech_detected"]) + len(result["layout_issues"])
+
+        # Modern framework/CMS penalty reduction
+        modern_cms = {"nextjs", "astro", "react", "vue", "gatsby", "shopify", "squarespace", "wix"}
+        cms = result.get("detected_cms")
+        is_modern = cms in modern_cms
+
         if not result["https"]:
             issues += 1
-        if result["load_time_ms"] > 5000:
+        if result["load_time_ms"] > 5000 and not is_modern:
             issues += 1
+        if result["load_time_ms"] > 8000:
+            issues += 1  # always bad regardless of CMS
         if not result["mobile_friendly"]:
             issues += 1
+        if result.get("platform_page"):
+            issues += 2
 
-        if issues >= 3 or result["load_time_ms"] >= 8000:
+        # DOM bloat is less severe for modern frameworks (hydration bloat)
+        dom_bloat = any("bloated_dom" in i for i in result["layout_issues"])
+        if dom_bloat and is_modern:
+            issues -= 1
+
+        if issues >= 3 or result["load_time_ms"] >= 8000 or result.get("platform_page"):
             result["overall_score"] = "poor"
         elif issues >= 1:
             result["overall_score"] = "needs_work"
