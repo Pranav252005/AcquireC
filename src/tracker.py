@@ -184,7 +184,12 @@ def get_hot_leads(db: Session, min_score: int = 70, limit: int = 50) -> list[Lea
 
 def get_leads_by_stage(db: Session, stage: str, city: str | None = None) -> list[Lead]:
     """Return leads in a specific kanban stage."""
-    query = db.query(Lead).filter(Lead.kanban_stage == stage)
+    if stage == "cold":
+        query = db.query(Lead).filter(
+            (Lead.kanban_stage == stage) | (Lead.kanban_stage.is_(None))
+        )
+    else:
+        query = db.query(Lead).filter(Lead.kanban_stage == stage)
     if city:
         query = query.filter(Lead.city.ilike(f"%{city}%"))
     return query.order_by(Lead.updated_at.desc()).all()

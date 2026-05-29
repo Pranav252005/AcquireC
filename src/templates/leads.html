@@ -100,4 +100,23 @@
         </tbody>
     </table>
 </div>
+
+{% if total > per_page %}
+<div class="flex justify-between items-center mt-4">
+    <p class="text-sm text-gray-500">Showing {{ leads|length }} of {{ total }} leads</p>
+    <div class="flex gap-2">
+        {% if page > 1 %}
+        <a href="/leads?city={{ city_filter or '' }}&status={{ status_filter or '' }}&stage={{ stage_filter or '' }}&min_score={{ min_score or 0 }}&page={{ page - 1 }}&per_page={{ per_page }}" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">← Previous</a>
+        {% endif %}
+        <span class="px-4 py-2 text-sm text-gray-500">Page {{ page }} of {{ total_pages }}</span>
+        {% if page * per_page < total %}
+        <a href="/leads?city={{ city_filter or '' }}&status={{ status_filter or '' }}&stage={{ stage_filter or '' }}&min_score={{ min_score or 0 }}&page={{ page + 1 }}&per_page={{ per_page }}" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Next →</a>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<div class="mt-4">
+    <p class="text-sm text-gray-500">Showing {{ leads|length }} of {{ total }} leads</p>
+</div>
+{% endif %}
 {% endblock %}

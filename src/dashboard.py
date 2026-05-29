@@ -113,12 +113,10 @@ def leads(
     else:
         query = query.filter((Lead.kanban_stage != "lost") | (Lead.kanban_stage.is_(None)))
 
-    total = query.count()
-    offset = (page - 1) * per_page
-    page_leads = query.order_by(Lead.created_at.desc()).offset(offset).limit(per_page).all()
+    all_leads = query.order_by(Lead.created_at.desc()).all()
 
     filtered = []
-    for lead in page_leads:
+    for lead in all_leads:
         lead.latest_status = _lead_status(lead)
         if status and lead.latest_status != status:
             continue
@@ -126,12 +124,17 @@ def leads(
             continue
         filtered.append(lead)
 
+    total = len(filtered)
+    offset = (page - 1) * per_page
+    page_leads = filtered[offset:offset + per_page]
+
+    total_pages = (total + per_page - 1) // per_page
     alerts = get_active_discovery_alerts(db)
     return templates.TemplateResponse(
         request,
         "leads.html",
         {
-            "leads": filtered,
+            "leads": page_leads,
             "city_filter": city,
             "status_filter": status,
             "stage_filter": stage,
@@ -139,6 +142,7 @@ def leads(
             "page": page,
             "per_page": per_page,
             "total": total,
+            "total_pages": total_pages,
             "alerts": alerts,
         },
     )
@@ -149,7 +153,7 @@ def lead_detail(request: Request, lead_id: int, db: Session = Depends(get_db)):
     """Show single lead details with full CRM data."""
     lead = get_lead_detail(db, lead_id)
     if not lead:
-        return HTMLResponse("Lead not found", status_code=404)
+        return RedirectResponse(url="/leads", status_code=303)
     lead.latest_status = _lead_status(lead)
     alerts = get_active_discovery_alerts(db)
     return templates.TemplateResponse(
@@ -170,7 +174,7 @@ def add_note(lead_id: int, note_text: str = Form(...), db: Session = Depends(get
     """Add a note to a lead."""
     lead = get_lead_detail(db, lead_id)
     if not lead:
-        raise HTTPException(status_code=404, detail="Lead not found")
+        return RedirectResponse(url="/leads", status_code=303)
     add_lead_note(db, lead_id, note_text)
     return RedirectResponse(url=f"/leads/{lead_id}", status_code=303)
 
@@ -180,7 +184,7 @@ def update_stage(lead_id: int, stage: str = Form(...), db: Session = Depends(get
     """Update a lead's kanban stage."""
     lead = update_lead_stage(db, lead_id, stage)
     if not lead:
-        raise HTTPException(status_code=404, detail="Lead not found")
+        return RedirectResponse(url="/leads", status_code=303)
     return RedirectResponse(url=f"/leads/{lead_id}", status_code=303)
 
 
