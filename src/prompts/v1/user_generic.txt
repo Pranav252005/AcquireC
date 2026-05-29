@@ -12,11 +12,15 @@ Price level: {{ price_level or "Unknown" }}
 LinkedIn summary: {{ linkedin_summary[:500] }}
 Offerings: {{ offerings[:300] }}
 Biggest pain point: {{ biggest_pain_point }}
-Membership concept: {{ membership_concept }}
+
+EXAMPLE membership concepts for {{ business_type }} businesses (create something COMPLETELY DIFFERENT and unique for {{ name }} based on their actual offerings above):
+{{ membership_concept }}
 
 Website benefits for this stage:
 {% for line in website_benefit_lines %}
 - {{ line }}
 {% endfor %}
 
-Generate the JSON pitch now.
+Generate the JSON pitch. Invent a UNIQUE membership/loyalty concept specifically for {{ name }} based on what they actually offer. Do NOT use generic names or copy the example concept.
+
+Return ONLY valid JSON with keys: pitch_text, context_summary, membership_idea, website_benefits.

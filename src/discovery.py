@@ -19,6 +19,64 @@ from src.vision_mapper import (
     safe_fill,
 )
 
+# Default categories to search when user selects "all" business types
+ALL_CATEGORIES: list[str] = [
+    "cafe",
+    "restaurant",
+    "salon",
+    "spa",
+    "retail",
+    "clinic",
+    "gym",
+    "fitness",
+    "tuition",
+    "coaching",
+    "bakery",
+    "boutique",
+    "bookstore",
+    "pharmacy",
+]
+
+# Major neighborhoods for large Indian cities to enable deeper geographic coverage
+CITY_NEIGHBORHOODS: dict[str, list[str]] = {
+    "Delhi": [
+        "Connaught Place", "Hauz Khas", "Karol Bagh", "Saket", "Dwarka",
+        "Greater Kailash", "Lajpat Nagar", "Rajouri Garden", "Vasant Kunj",
+        "Rohini", "Janakpuri", "Punjabi Bagh", "Defence Colony", "Khan Market",
+        "Chandni Chowk", "Mehrauli", "South Extension", "Mayur Vihar",
+    ],
+    "Mumbai": [
+        "Bandra", "Andheri", "Juhu", "Colaba", "Lower Parel", "Dadar",
+        "Malad", "Borivali", "Powai", "Goregaon", "Khar", "Santacruz",
+        "Chembur", "Worli", "Vashi", "Thane", "Versova", "Marine Lines",
+    ],
+    "Bangalore": [
+        "Koramangala", "Indiranagar", "MG Road", "Jayanagar", "Whitefield",
+        "Electronic City", "HSR Layout", "Marathahalli", "Banashankari",
+        "Rajajinagar", "Malleshwaram", "Bellandur", "BTM Layout", "Basavanagudi",
+    ],
+    "Chennai": [
+        "T Nagar", "Adyar", "Anna Nagar", "Mylapore", "Nungambakkam",
+        "Velachery", "Royapettah", "Kodambakkam", "Egmore", "Besant Nagar",
+    ],
+    "Hyderabad": [
+        "Banjara Hills", "Jubilee Hills", "Gachibowli", "Hitech City",
+        "Secunderabad", "Kondapur", "Madhapur", "Begumpet", "Kukatpally",
+    ],
+    "Pune": [
+        "Koregaon Park", "Kalyani Nagar", "Camp", "Deccan", "Aundh",
+        "Baner", "Hinjewadi", "Kharadi", "Viman Nagar", "Kothrud",
+    ],
+    "Kolkata": [
+        "Park Street", "Salt Lake", "Ballygunge", "New Alipore", "Gariahat",
+        "Camac Street", "Rajpur", "Behala", "Jadavpur", "Sealdah",
+    ],
+    "Ahmedabad": [
+        "Vastrapur", "Navrangpura", "Satellite", "Bodakdev", "Maninagar",
+        "CG Road", "Prahlad Nagar", "Bopal", "Thaltej", "Ashram Road",
+    ],
+}
+
 
 class GoogleMapsScraper:
     """Scrape business listings from Google Maps."""
@@ -41,6 +99,7 @@ class GoogleMapsScraper:
         category: str,
         max_leads: int = 20,
         exclude_names: set[str] | None = None,
+        area: str | None = None,
     ) -> list[dict[str, Any]]:
         """Search Google Maps and return business listings.
 
@@ -50,8 +109,14 @@ class GoogleMapsScraper:
             max_leads: Maximum number of new leads to return.
             exclude_names: Set of business names already in the database
                 that should be skipped.
+            area: Optional neighborhood/area within the city to narrow search.
         """
-        query = f"{category} in {city}" if category != "all" else f"businesses in {city}"
+        if area:
+            query = f"{category} in {area}, {city}"
+        elif category != "all":
+            query = f"{category} in {city}"
+        else:
+            query = f"businesses in {city}"
         results: list[dict[str, Any]] = []
         excluded = exclude_names or set()
 
@@ -207,10 +272,15 @@ class GoogleMapsScraper:
 
             # ── Collect place URLs by scrolling ─────────────────────────
             place_urls: list[str] = []
-            max_scroll_rounds = max_leads + 5
-            for _ in range(max_scroll_rounds):
+            max_scroll_rounds = max(30, max_leads + 10)
+            stall_count = 0
+            prev_count = 0
+
+            for scroll_round in range(max_scroll_rounds):
                 if len(place_urls) >= max_leads * 3:
                     break
+
+                # Collect currently visible place URLs
                 found = page.evaluate(
                     """() => {
                         const seen = new Set();
@@ -230,21 +300,56 @@ class GoogleMapsScraper:
                 )
                 for url in found:
                     if url not in place_urls:
-                        # Try to pre-filter known places by parsing the name from the URL
-                        # Google Maps URLs look like /maps/place/Starbucks+Coffee/@...
-                        try:
-                            name_part = url.split('/maps/place/')[1].split('/@')[0]
-                            decoded = urllib.parse.unquote_plus(name_part).replace('+', ' ')
-                            if decoded not in excluded:
-                                place_urls.append(url)
-                            else:
-                                logger.debug("Skipping known place from URL: %s", decoded)
-                        except Exception:
-                            place_urls.append(url)
-                page.mouse.wheel(0, 1200)
-                page.wait_for_timeout(2000)
+                        place_urls.append(url)
 
-            logger.info("Collected %d unique place URLs after exclusion filter", len(place_urls))
+                # Detect scroll stall (no new results after 3 consecutive scrolls)
+                if len(place_urls) == prev_count:
+                    stall_count += 1
+                    if stall_count >= 3:
+                        logger.info("Scroll stalled after %d rounds (%d URLs found)", scroll_round + 1, len(place_urls))
+                        break
+                else:
+                    stall_count = 0
+                prev_count = len(place_urls)
+
+                # Scroll the results feed, NOT the page body
+                # Primary: JavaScript scroll on the feed element
+                scrolled = page.evaluate(
+                    """() => {
+                        const feed = document.querySelector('div[role="feed"]');
+                        if (feed) {
+                            feed.scrollTop += 800;
+                            return true;
+                        }
+                        const sidebar = document.querySelector('[data-test-id="search-results"]')
+                            || document.querySelector('div[role="main"] > div > div > div > div');
+                        if (sidebar) {
+                            sidebar.scrollTop += 800;
+                            return true;
+                        }
+                        return false;
+                    }"""
+                )
+                if not scrolled:
+                    # Fallback: hover over results area then wheel scroll
+                    try:
+                        feed = page.locator('div[role="feed"]').first
+                        if feed.count() > 0:
+                            feed.hover()
+                        page.mouse.wheel(0, 1200)
+                    except Exception:
+                        page.mouse.wheel(0, 1200)
+                page.wait_for_timeout(2500)
+
+            logger.info("Collected %d unique place URLs after scrolling", len(place_urls))
+
+            # Debug screenshot to verify scroll state
+            try:
+                ts = int(time.time())
+                page.screenshot(path=str(self.screenshots_dir / f"scroll_end_{ts}.png"))
+            except Exception:
+                pass
+
             if not place_urls:
                 raise DiscoveryExhaustedError(
                     f"All visible {category} places in {city} have already been discovered."
@@ -266,6 +371,9 @@ class GoogleMapsScraper:
                             continue
                         if LeadQualityFilter.is_blocked_name(name, category):
                             logger.info("Skipping blocked business: %s", name)
+                            continue
+                        if LeadQualityFilter.is_generic_name(name, city, category):
+                            logger.info("Skipping generic search-result name: %s", name)
                             continue
                         key = (city, name)
                         if key not in seen_keys:

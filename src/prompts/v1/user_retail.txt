@@ -13,7 +13,7 @@ LinkedIn summary: {{ linkedin_summary[:500] }}
 Offerings: {{ offerings[:300] }}
 Biggest pain point: {{ biggest_pain_point }}
 
-Membership concept for retail:
+EXAMPLE membership concepts for retail (create something COMPLETELY DIFFERENT and unique for {{ name }} based on their actual offerings above):
 {{ membership_concept }}
 
 Website benefits for {{ maturity_stage }} retail:
@@ -25,7 +25,9 @@ Generate the JSON pitch. Focus on:
 - Product showcase with search and filters
 - Members-only drops and early access
 - Wishlist and back-in-stock alerts
-- Insider Circle loyalty program
+- A UNIQUE loyalty program tailored to what THIS store actually sells
 - WhatsApp broadcast integration for flash sales
+
+IMPORTANT: The membership concept must be UNIQUE to {{ name }} and based on their actual products. Do NOT copy the example concept name.
 
 Return ONLY valid JSON with keys: pitch_text, context_summary, membership_idea, website_benefits.

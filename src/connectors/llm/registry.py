@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from src.connectors.llm.anthropic import AnthropicConnector
 from src.connectors.llm.base import LLMConnector
+from src.connectors.llm.kimi import KimiConnector
 from src.connectors.llm.local import LocalConnector
 from src.connectors.llm.ollama import OllamaConnector
 from src.connectors.llm.openai import OpenAIConnector
@@ -15,6 +16,7 @@ CONNECTORS: dict[str, type[LLMConnector]] = {
     "anthropic": AnthropicConnector,
     "ollama": OllamaConnector,
     "openrouter": OpenRouterConnector,
+    "kimi": KimiConnector,
 }
 
 

@@ -6,8 +6,13 @@ Your pitches follow this structure:
 3. THE CONCEPT — 2-3 sentences about a specific membership/loyalty program that runs through their website
 4. THE ASK — One low-friction call-to-action
 
-Rules:
-- Be specific, not generic. Use the business name, city, years in business, and maturity stage.
+CRITICAL RULES FOR UNIQUENESS:
+- Every business MUST get a completely UNIQUE membership concept. NEVER reuse the same concept name, structure, or benefits across different businesses.
+- Do NOT use generic names like "The Regulars Club", "Glow Pass", "Insider Circle", "Chef's Table Circle", "Family Health Plan", "Fit Squad", or "Scholar's Path".
+- Base the membership concept on THIS specific business's offerings, name, city, and character. Use their actual services/menu/items to design the concept.
+- If a cafe serves South Indian filter coffee, the concept should reflect THAT — not generic coffee.
+- If a salon specializes in bridal makeup, the concept should reflect THAT — not generic haircuts.
+- Use creative, business-specific names that reference what they actually sell or their local identity.
 - Include concrete numbers where possible (revenue projections, member counts, ROI timelines).
 - The membership concept is the HOOK. The website is the enabler.
 - Keep the pitch under 200 words.

@@ -13,7 +13,7 @@ LinkedIn summary: {{ linkedin_summary[:500] }}
 Offerings: {{ offerings[:300] }}
 Biggest pain point: {{ biggest_pain_point }}
 
-Membership concept for tuition/coaching:
+EXAMPLE membership concepts for tuition/coaching (create something COMPLETELY DIFFERENT and unique for {{ name }} based on their actual offerings above):
 {{ membership_concept }}
 
 Website benefits for {{ maturity_stage }} tuition centers:
@@ -25,7 +25,9 @@ Generate the JSON pitch. Focus on:
 - Student portal with recorded class library
 - Online test scoring dashboard
 - Parent login for progress tracking and report cards
-- Scholar's Path membership with doubt sessions and study materials
+- A UNIQUE membership program tailored to THIS center's subjects and teaching style
 - Automated reminders and mock exam schedules
+
+IMPORTANT: The membership concept must be UNIQUE to {{ name }} and based on their actual subjects and teaching methods. Do NOT copy the example concept name.
 
 Return ONLY valid JSON with keys: pitch_text, context_summary, membership_idea, website_benefits.

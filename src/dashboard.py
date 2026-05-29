@@ -65,7 +65,11 @@ def index(request: Request, db: Session = Depends(get_db)):
 
     cities = get_all_cities(db)
     recent_leads = (
-        db.query(Lead).order_by(Lead.created_at.desc()).limit(10).all()
+        db.query(Lead)
+        .filter((Lead.kanban_stage != "lost") | (Lead.kanban_stage.is_(None)))
+        .order_by(Lead.created_at.desc())
+        .limit(10)
+        .all()
     )
     for lead in recent_leads:
         lead.latest_status = _lead_status(lead)
@@ -103,6 +107,11 @@ def leads(
         query = query.filter(Lead.city.ilike(f"%{city}%"))
     if min_score > 0:
         query = query.filter(Lead.lead_score >= min_score)
+
+    if stage == "lost":
+        query = query.filter(Lead.kanban_stage == "lost")
+    else:
+        query = query.filter((Lead.kanban_stage != "lost") | (Lead.kanban_stage.is_(None)))
 
     total = query.count()
     offset = (page - 1) * per_page
@@ -203,6 +212,7 @@ def kanban_board(request: Request, city: str = Query(""), db: Session = Depends(
 def hot_leads_page(request: Request, db: Session = Depends(get_db)):
     """Dedicated hot leads page."""
     leads = get_hot_leads(db, min_score=70, limit=50)
+    leads = [lead for lead in leads if lead.kanban_stage != "lost"]
     for lead in leads:
         lead.latest_status = _lead_status(lead)
     alerts = get_active_discovery_alerts(db)
@@ -218,7 +228,11 @@ def city_report(request: Request, city: str, db: Session = Depends(get_db)):
     """City-specific report with pie chart."""
     stats = get_city_summary(db, city)
     leads_in_city = (
-        db.query(Lead).filter(Lead.city.ilike(city)).order_by(Lead.created_at.desc()).all()
+        db.query(Lead)
+        .filter(Lead.city.ilike(city))
+        .filter((Lead.kanban_stage != "lost") | (Lead.kanban_stage.is_(None)))
+        .order_by(Lead.created_at.desc())
+        .all()
     )
     for lead in leads_in_city:
         lead.latest_status = _lead_status(lead)

@@ -13,7 +13,7 @@ LinkedIn summary: {{ linkedin_summary[:500] }}
 Offerings: {{ offerings[:300] }}
 Biggest pain point: {{ biggest_pain_point }}
 
-Membership concept for restaurants:
+EXAMPLE membership concepts for restaurants (create something COMPLETELY DIFFERENT and unique for {{ name }} based on their actual offerings above):
 {{ membership_concept }}
 
 Website benefits for {{ maturity_stage }} restaurants:
@@ -25,7 +25,9 @@ Generate the JSON pitch. Focus on:
 - Reservation system with member priority
 - Online menu with dietary filters and photos
 - Pre-order for peak hours to smooth operations
-- Chef's Table Circle membership for predictable revenue
+- A UNIQUE membership program tailored to THIS restaurant's cuisine and style
 - Review collection system
+
+IMPORTANT: The membership concept must be UNIQUE to {{ name }} and based on their actual cuisine. Do NOT copy the example concept name.
 
 Return ONLY valid JSON with keys: pitch_text, context_summary, membership_idea, website_benefits.

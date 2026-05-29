@@ -5,6 +5,7 @@ Exports all connectors and the registry for pluggable LLM backends.
 
 from src.connectors.llm.anthropic import AnthropicConnector
 from src.connectors.llm.base import BusinessContext, ConnectorError, LLMConnector, PitchResult
+from src.connectors.llm.kimi import KimiConnector
 from src.connectors.llm.local import LocalConnector
 from src.connectors.llm.ollama import OllamaConnector
 from src.connectors.llm.openai import OpenAIConnector
@@ -17,6 +18,7 @@ __all__ = [
     "ConnectorError",
     "ConnectorRegistry",
     "CONNECTORS",
+    "KimiConnector",
     "LLMConnector",
     "LocalConnector",
     "OllamaConnector",

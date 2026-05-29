@@ -70,39 +70,88 @@ class MaturityAnalyzer:
                 "Collect customer emails from day one — your most valuable asset",
                 "Google Business Profile + website = you show up when someone searches nearby",
                 "One professional page builds more trust than 50 social media posts",
+                "Local SEO puts you on the map before bigger chains notice the neighborhood",
+                "A simple booking link turns Instagram likes into actual appointments",
             ],
             "growth": [
                 "You're losing bookings to competitors with online reservation systems",
                 "Your staff spends 30+ mins/day answering 'are you open?' — a website answers it instantly",
                 "Every social media follower should click to your menu/services in 1 tap",
                 "Online reviews on your own site = you control the narrative",
+                "Peak-hour demand is wasted without online pre-orders or reservations",
+                "Your repeat customers want to refer friends — give them a link to share",
             ],
             "established": [
                 "You've built the reputation — now let the website work while you sleep",
                 "Your regulars are aging; their kids search on Google, not memory",
                 "A loyalty program integrated into your site increases visit frequency by 20-30%",
                 "Online pre-orders for peak hours = smoother operations + higher ticket size",
+                "Data from your site shows which services are trending — no more guessing",
+                "Former customers who moved away can still buy gift cards or merch online",
             ],
             "legacy": [
                 "Your competitors are retiring too — the ones with websites are selling to younger owners",
                 "Your staff can learn one simple system — we train them personally",
                 "Keep your phone number, keep your routines, just add a digital front door",
                 "When you decide to sell, a business with a website sells for 20-40% more",
+                "Grandchildren of your loyal customers search online — meet them where they are",
+                "A photo gallery of your history and craftsmanship builds instant credibility",
             ],
         }
         base = benefits.get(maturity_stage, benefits["growth"])
 
         # Add business-type-specific benefits
         type_addons: dict[str, list[str]] = {
-            "cafe": ["Instagram-integrated gallery drives foot traffic from foodies"],
-            "restaurant": ["Reservation system fills tables during slow Tuesday lunches"],
-            "salon": ["Online booking reduces no-shows by 40% with SMS reminders"],
-            "spa": ["Package upsells on the website increase average ticket by 25%"],
-            "retail": ["E-commerce readiness turns walk-ins into online repeat buyers"],
-            "clinic": ["Patient portal reduces front-desk call volume by 60%"],
-            "doctor": ["Online forms mean patients arrive with paperwork already done"],
-            "gym": ["Class booking with waitlists means no empty spots go wasted"],
-            "tuition": ["Recorded class library lets students revise at their own pace"],
+            "cafe": [
+                "Instagram-integrated gallery drives foot traffic from foodies",
+                "Online menu with photos reduces 'what do you serve?' questions",
+                "Laptop-friendly seating reservations for remote workers",
+            ],
+            "restaurant": [
+                "Reservation system fills tables during slow Tuesday lunches",
+                "Digital menu with dietary filters reduces waitstaff interruptions",
+                "Pre-order for peak hours = kitchen runs smoother + bigger tickets",
+            ],
+            "salon": [
+                "Online booking reduces no-shows by 40% with SMS reminders",
+                "Stylist portfolios let clients choose who cuts their hair",
+                "Product shop turns one-time visitors into recurring buyers",
+            ],
+            "spa": [
+                "Package upsells on the website increase average ticket by 25%",
+                "Therapist preference booking builds client loyalty",
+                "Gift cards sold online bring new customers during slow months",
+            ],
+            "retail": [
+                "E-commerce readiness turns walk-ins into online repeat buyers",
+                "Back-in-stock alerts recover sales that would have gone to competitors",
+                "Member-only drops create urgency and social proof",
+            ],
+            "clinic": [
+                "Patient portal reduces front-desk call volume by 60%",
+                "Online forms mean patients arrive with paperwork already done",
+                "Appointment reminders via WhatsApp cut missed visits in half",
+            ],
+            "doctor": [
+                "Online forms mean patients arrive with paperwork already done",
+                "Telemedicine scheduling expands your reach beyond the neighborhood",
+                "Health articles on your site position you as the local expert",
+            ],
+            "gym": [
+                "Class booking with waitlists means no empty spots go wasted",
+                "Progress dashboards keep members motivated and retained longer",
+                "Nutrition plan portal adds a second revenue stream",
+            ],
+            "tuition": [
+                "Recorded class library lets students revise at their own pace",
+                "Parent dashboards reduce 'how is my child doing?' calls",
+                "Online test series attract students from outside your immediate area",
+            ],
+            "coaching": [
+                "Client portal with milestone tracking improves retention 2x",
+                "Resource library (worksheets, videos) adds passive income",
+                "Group challenge leaderboards build community and referrals",
+            ],
         }
 
         addon = type_addons.get(business_type.lower(), [])

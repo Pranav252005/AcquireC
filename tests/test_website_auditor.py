@@ -172,3 +172,13 @@ class TestWebsiteAuditor:
 
         assert result["detected_cms"] == "nextjs"
         assert result["overall_score"] == "good"
+
+    def test_audit_social_media_link(self) -> None:
+        """Should mark Instagram/LinkedIn URLs as social_media with poor score."""
+        auditor = WebsiteAuditor()
+        result = auditor.audit("https://instagram.com/kgcafe")
+
+        assert result.get("social_media") is True
+        assert result["overall_score"] == "poor"
+        assert "social_media_link_not_real_website" in result["layout_issues"]
+        assert result["has_website"] is False

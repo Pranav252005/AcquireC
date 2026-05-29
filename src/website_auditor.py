@@ -43,9 +43,26 @@ class WebsiteAuditor:
         if cached is not None:
             return cached
 
+        # Social media pages are not real business websites
+        if LeadQualityFilter.is_social_media_link(url):
+            result: dict[str, Any] = {
+                "has_website": False,
+                "mobile_friendly": True,
+                "https": url.startswith("https://"),
+                "load_time_ms": 0,
+                "old_tech_detected": [],
+                "layout_issues": ["social_media_link_not_real_website"],
+                "overall_score": "poor",
+                "detected_cms": None,
+                "platform_page": False,
+                "social_media": True,
+            }
+            _set_cache(url, result)
+            return result
+
         # Platform pages (Swiggy, Zomato, etc.) are not real business websites
         if LeadQualityFilter.is_platform_only_website(url):
-            result: dict[str, Any] = {
+            result = {
                 "has_website": True,
                 "mobile_friendly": True,
                 "https": url.startswith("https://"),

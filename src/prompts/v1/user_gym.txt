@@ -13,7 +13,7 @@ LinkedIn summary: {{ linkedin_summary[:500] }}
 Offerings: {{ offerings[:300] }}
 Biggest pain point: {{ biggest_pain_point }}
 
-Membership concept for gyms:
+EXAMPLE membership concepts for gyms (create something COMPLETELY DIFFERENT and unique for {{ name }} based on their actual offerings above):
 {{ membership_concept }}
 
 Website benefits for {{ maturity_stage }} gyms:
@@ -24,8 +24,10 @@ Website benefits for {{ maturity_stage }} gyms:
 Generate the JSON pitch. Focus on:
 - Class schedule with real-time capacity and online booking
 - Progress dashboard (weight, measurements, attendance streaks)
-- Fit Squad membership tiers with personal training credits
+- A UNIQUE membership program tailored to THIS gym's classes and community
 - Nutrition plan portal
 - Community forum for members
+
+IMPORTANT: The membership concept must be UNIQUE to {{ name }} and based on their actual classes and training style. Do NOT copy the example concept name.
 
 Return ONLY valid JSON with keys: pitch_text, context_summary, membership_idea, website_benefits.

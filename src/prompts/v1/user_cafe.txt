@@ -13,7 +13,7 @@ LinkedIn summary: {{ linkedin_summary[:500] }}
 Offerings: {{ offerings[:300] }}
 Biggest pain point: {{ biggest_pain_point }}
 
-Membership concept for cafés:
+EXAMPLE membership concepts for cafés (create something COMPLETELY DIFFERENT and unique for {{ name }} based on their actual offerings above):
 {{ membership_concept }}
 
 Website benefits for {{ maturity_stage }} cafés:
@@ -25,7 +25,9 @@ Generate the JSON pitch. Focus on:
 - Morning commuter discovery (Google "café near me")
 - Table booking for laptop workers and meetings
 - Online menu with photos
-- The Regulars Club loyalty program with predictable monthly revenue
+- A UNIQUE loyalty program tailored to what THIS café actually serves
 - Instagram integration
+
+IMPORTANT: The membership concept must be UNIQUE to {{ name }} and based on their actual offerings. Do NOT copy the example concept name.
 
 Return ONLY valid JSON with keys: pitch_text, context_summary, membership_idea, website_benefits.

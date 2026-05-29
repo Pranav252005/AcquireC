@@ -99,10 +99,9 @@ class TestGoogleMapsScraper:
         sig = inspect.signature(GoogleMapsScraper.discover)
         assert "exclude_names" in sig.parameters
 
-    def test_url_name_parsing_skips_known_places(self) -> None:
-        """URLs containing known business names should be pre-filtered."""
+    def test_exclude_names_parameter_exists(self) -> None:
+        """discover should still reference exclude_names for detail-page filtering."""
         import inspect
 
         source = inspect.getsource(GoogleMapsScraper.discover)
-        assert "urllib.parse.unquote_plus" in source
         assert "exclude_names" in source

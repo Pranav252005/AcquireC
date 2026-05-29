@@ -12,6 +12,7 @@ from src.connectors.llm import (
     BusinessContext,
     ConnectorError,
     ConnectorRegistry,
+    KimiConnector,
     LocalConnector,
     OllamaConnector,
     OpenAIConnector,
@@ -871,4 +872,109 @@ class TestOpenRouterConnector:
             website_issues=["missing_meta"],
         )
         with pytest.raises(ConnectorError, match="OpenRouter API request failed"):
+            conn.generate_pitch(ctx)
+
+
+class TestKimiConnector:
+    """Tests for KimiConnector."""
+
+    def test_health_check_with_key(self, monkeypatch) -> None:
+        """health_check should return True when API key is set and valid."""
+        monkeypatch.setattr(
+            "src.connectors.llm.kimi.get_settings",
+            lambda: MagicMock(kimi_api_key="sk-kimi-test"),
+        )
+        conn = KimiConnector()
+        assert conn.health_check() is True
+
+    def test_health_check_without_key(self, monkeypatch) -> None:
+        """health_check should return False when API key is empty."""
+        monkeypatch.setattr(
+            "src.connectors.llm.kimi.get_settings",
+            lambda: MagicMock(kimi_api_key=""),
+        )
+        conn = KimiConnector()
+        assert conn.health_check() is False
+
+    def test_can_use_with_key(self, monkeypatch) -> None:
+        """can_use should return True when API key is set."""
+        monkeypatch.setattr(
+            "src.connectors.llm.kimi.get_settings",
+            lambda: MagicMock(kimi_api_key="sk-kimi-test"),
+        )
+        assert KimiConnector.can_use() is True
+
+    def test_can_use_without_key(self, monkeypatch) -> None:
+        """can_use should return False when API key is empty."""
+        monkeypatch.setattr(
+            "src.connectors.llm.kimi.get_settings",
+            lambda: MagicMock(kimi_api_key=""),
+        )
+        assert KimiConnector.can_use() is False
+
+    def test_generate_pitch_returns_pitch_result(self, monkeypatch) -> None:
+        """generate_pitch should return PitchResult when API responds."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps({
+            "pitch_text": "Kimi pitch",
+            "membership_idea": "Membership",
+            "website_benefits": "Benefits",
+            "model_used": "kimi",
+        })
+        mock_client.chat.completions.create.return_value = mock_response
+
+        monkeypatch.setattr(
+            "src.connectors.llm.kimi.get_settings",
+            lambda: MagicMock(kimi_api_key="sk-kimi-test", llm_timeout_ms=30000),
+        )
+        monkeypatch.setattr("openai.OpenAI", lambda api_key, base_url: mock_client)
+
+        conn = KimiConnector()
+        ctx = BusinessContext(
+            business_type="cafe",
+            maturity_stage="growing",
+            website_score="needs_work",
+            years_in_business=2,
+            city="Mumbai",
+            name="Delta Cafe",
+            has_website=False,
+            website_issues=["missing_meta"],
+        )
+        result = conn.generate_pitch(ctx)
+        assert isinstance(result, PitchResult)
+        assert result.pitch_text == "Kimi pitch"
+        assert result.membership_idea == "Membership"
+        assert result.model_used == "kimi"
+
+    def test_generate_pitch_api_error(self, monkeypatch) -> None:
+        """generate_pitch should raise ConnectorError on APIError."""
+        from openai import APIError
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = APIError(
+            message="bad request",
+            request=MagicMock(),
+            body=None,
+        )
+
+        monkeypatch.setattr(
+            "src.connectors.llm.kimi.get_settings",
+            lambda: MagicMock(kimi_api_key="sk-kimi-test", llm_timeout_ms=30000),
+        )
+        monkeypatch.setattr("openai.OpenAI", lambda api_key, base_url: mock_client)
+
+        conn = KimiConnector()
+        ctx = BusinessContext(
+            business_type="cafe",
+            maturity_stage="growing",
+            website_score="needs_work",
+            years_in_business=2,
+            city="Mumbai",
+            name="Delta Cafe",
+            has_website=False,
+            website_issues=["missing_meta"],
+        )
+        with pytest.raises(ConnectorError, match="Kimi API request failed"):
             conn.generate_pitch(ctx)

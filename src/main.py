@@ -23,7 +23,15 @@ from src.database import get_sessionmaker, init_db
 from src.logging_config import setup_logging
 
 setup_logging()
-from src.discovery import DiscoveryError, DiscoveryExhaustedError, GoogleMapsScraper
+from src.core.city_rotator import CITY_TIERS
+from src.discovery import (
+    ALL_CATEGORIES,
+    CITY_NEIGHBORHOODS,
+    DiscoveryError,
+    DiscoveryExhaustedError,
+    GoogleMapsScraper,
+)
+from src.filters import LeadQualityFilter
 from src.follow_up import FollowUpEngine
 from src.messenger import EmailSender, WhatsAppError, WhatsAppSender
 from src.models import FollowUp, Lead, LeadNote, Outreach, OutreachChannel, OutreachStatus
@@ -32,6 +40,7 @@ from src.reports import list_report_dates, save_daily_report
 from src.researcher import WebsiteResearcher
 from src.summarizer import Summarizer
 from src.website_auditor import WebsiteAuditor
+from src.website_verifier import WebsiteVerifier
 from src.tracker import (
     add_discovery_alert,
     get_all_cities,
@@ -267,7 +276,7 @@ def run_pipeline(
     # WhatsApp is draft-only; no auth needed for automation
     wa_sender = None
 
-    # Discovery
+    # Discovery with replacement loop
     console.print(f"[bold blue]Step 1: Discovering {category} businesses in {city} on Google Maps...[/bold blue]")
     try:
         pool = BrowserPool(headless=True)
@@ -277,94 +286,216 @@ def run_pipeline(
         pool = None
         shared_browser = None
     scraper = GoogleMapsScraper(headless=True, browser=shared_browser)
-    known_names = get_known_business_names(db, city, category)
-    try:
-        raw_leads = scraper.discover(
-            city, category, max_leads=max_leads * 3, exclude_names=known_names
-        )
-    except DiscoveryExhaustedError as exc:
-        console.print(
-            f"[bold orange3]⚠ {category.capitalize()} in {city} are already fully discovered. "
-            f"No new places left to find.[/bold orange3]"
-        )
-        add_discovery_alert(
-            db,
-            city=city,
-            category=category,
-            message=f"{category.capitalize()} in {city} have been fully discovered. No new places left.",
-            alert_type="warning",
-        )
-        if pool:
-            pool.close()
-        db.close()
-        return {
-            "exhausted": True,
-            "message": str(exc),
-            "city": city,
-            "category": category,
-            "leads": [],
-        }
-    except DiscoveryError as exc:
-        console.print(f"[red]Discovery failed: {exc}[/red]")
-        if pool:
-            pool.close()
-        db.close()
-        return {"error": str(exc), "city": city, "category": category}
-
-    # Website audit filter: skip businesses with modern websites
     auditor = WebsiteAuditor(headless=True, browser=shared_browser)
-    website_skipped = 0
-    audited_leads = []
-    for data in raw_leads:
-        website = data.get("website")
-        if website:
-            audit = auditor.audit(website)
-            data["website_audit"] = audit
-            data["detected_cms"] = audit.get("detected_cms")
-            # Try to extract email from website if missing
-            if not data.get("email"):
-                extracted = _extract_email_from_website(website)
-                if extracted:
-                    data["email"] = extracted
-            if audit.get("platform_page"):
-                console.print(f"[dim]{data['business_name']}: Platform page (Swiggy/Zomato/etc), treating as no website.[/dim]")
-                data["website"] = None
-            elif audit.get("overall_score") == "good" and not audit.get("audit_failed"):
-                console.print(f"[dim]{data['business_name']}: Website looks modern, skipping.[/dim]")
-                website_skipped += 1
-                continue
-        audited_leads.append(data)
+    verifier = WebsiteVerifier(delay_seconds=1.0)
 
-    # Dedup filter
-    leads_to_process = []
-    skipped = 0
-    for data in audited_leads:
-        if is_already_contacted(db, city, data["business_name"]):
-            skipped += 1
-            continue
-        leads_to_process.append(data)
+    known_names = set(get_known_business_names(db, city, category))
+    # Only exclude DB-known names from scraper; pipeline handles the rest.
+    # Passing skipped names back to scraper causes false "exhausted" errors.
+    leads_to_process: list[dict[str, Any]] = []
+    leads_seen: set[str] = set()
+    website_skipped_names: set[str] = set()
+    website_skipped = 0
+    verifier_skipped = 0
+    total_discovered = 0
+    exhausted = False
+
+    # --- Phase 1: Main city search (up to 3 rounds) ---
+    for round_num in range(1, 4):
         if len(leads_to_process) >= max_leads:
             break
+        remaining = max_leads - len(leads_to_process)
+        try:
+            raw_leads = scraper.discover(
+                city, category, max_leads=remaining * 3, exclude_names=known_names
+            )
+        except DiscoveryExhaustedError:
+            exhausted = True
+            break
+        except DiscoveryError:
+            break
 
+        if not raw_leads:
+            exhausted = True
+            break
+
+        new_names_this_round = 0
+        for data in raw_leads:
+            name = data["business_name"]
+            # Skip if already in pipeline, already contacted, or already skipped for website
+            if name in leads_seen or name in website_skipped_names:
+                continue
+            if is_already_contacted(db, city, name):
+                continue
+
+            new_names_this_round += 1
+            total_discovered += 1
+
+            website = data.get("website")
+            # Online verification: when Google Maps shows NO website, double-check
+            if not website:
+                v_result = verifier.verify(name, city)
+                if v_result.get("has_real_website"):
+                    found = v_result.get("found_url")
+                    console.print(
+                        f"[dim]{name}: Online search found website ({found}), skipping.[/dim]"
+                    )
+                    website_skipped += 1
+                    verifier_skipped += 1
+                    website_skipped_names.add(name)
+                    continue
+
+            if website:
+                classification = LeadQualityFilter.classify_website(website)
+                if classification == "real_website":
+                    console.print(f"[dim]{name}: Has real website ({website}), skipping.[/dim]")
+                    website_skipped += 1
+                    website_skipped_names.add(name)
+                    continue
+                elif classification == "social_media":
+                    console.print(f"[dim]{name}: Social media link only ({website}), keeping.[/dim]")
+                    data["social_media_url"] = website
+                    data["website"] = None
+                elif classification == "platform_page":
+                    audit = auditor.audit(website)
+                    data["website_audit"] = audit
+                    data["detected_cms"] = audit.get("detected_cms")
+                    if not data.get("email"):
+                        extracted = _extract_email_from_website(website)
+                        if extracted:
+                            data["email"] = extracted
+                    if audit.get("platform_page"):
+                        console.print(f"[dim]{name}: Platform page (Swiggy/Zomato/etc), treating as no website.[/dim]")
+                        data["website"] = None
+                else:
+                    audit = auditor.audit(website)
+                    data["website_audit"] = audit
+                    data["detected_cms"] = audit.get("detected_cms")
+                    if not data.get("email"):
+                        extracted = _extract_email_from_website(website)
+                        if extracted:
+                            data["email"] = extracted
+                    if audit.get("platform_page"):
+                        console.print(f"[dim]{name}: Platform page (Swiggy/Zomato/etc), treating as no website.[/dim]")
+                        data["website"] = None
+                    elif audit.get("overall_score") == "good" and not audit.get("audit_failed"):
+                        console.print(f"[dim]{name}: Website looks modern, skipping.[/dim]")
+                        website_skipped += 1
+                        website_skipped_names.add(name)
+                        continue
+
+            if name not in leads_seen:
+                leads_seen.add(name)
+                leads_to_process.append(data)
+                if len(leads_to_process) >= max_leads:
+                    break
+
+        if new_names_this_round == 0:
+            exhausted = True
+            break
+        if len(leads_to_process) < max_leads and not exhausted:
+            console.print(f"[dim]Round {round_num}: {len(leads_to_process)}/{max_leads} valid leads found; fetching more...[/dim]")
+
+    # --- Phase 2: Neighborhood search for large cities ---
+    from src.discovery import CITY_NEIGHBORHOODS
+    neighborhoods = CITY_NEIGHBORHOODS.get(city, [])
+    if len(leads_to_process) < max_leads and neighborhoods:
+        console.print(f"[dim]Main search exhausted. Trying {len(neighborhoods)} neighborhoods in {city}...[/dim]")
+        for area in neighborhoods:
+            if len(leads_to_process) >= max_leads:
+                break
+            remaining = max_leads - len(leads_to_process)
+            try:
+                area_leads = scraper.discover(
+                    city, category, max_leads=remaining * 3, exclude_names=known_names, area=area
+                )
+            except DiscoveryExhaustedError:
+                continue
+            except DiscoveryError:
+                continue
+
+            if not area_leads:
+                continue
+
+            for data in area_leads:
+                name = data["business_name"]
+                if name in leads_seen or name in website_skipped_names:
+                    continue
+                if is_already_contacted(db, city, name):
+                    continue
+
+                total_discovered += 1
+                website = data.get("website")
+                if not website:
+                    v_result = verifier.verify(name, city)
+                    if v_result.get("has_real_website"):
+                        console.print(
+                            f"[dim]{name}: Online search found website ({v_result.get('found_url')}), skipping.[/dim]"
+                        )
+                        website_skipped += 1
+                        verifier_skipped += 1
+                        website_skipped_names.add(name)
+                        continue
+
+                if website:
+                    classification = LeadQualityFilter.classify_website(website)
+                    if classification == "real_website":
+                        console.print(f"[dim]{name}: Has real website ({website}), skipping.[/dim]")
+                        website_skipped += 1
+                        website_skipped_names.add(name)
+                        continue
+                    elif classification == "social_media":
+                        data["social_media_url"] = website
+                        data["website"] = None
+                    elif classification == "platform_page":
+                        audit = auditor.audit(website)
+                        data["website_audit"] = audit
+                        if audit.get("platform_page"):
+                            data["website"] = None
+                    else:
+                        audit = auditor.audit(website)
+                        data["website_audit"] = audit
+                        if audit.get("platform_page"):
+                            data["website"] = None
+                        elif audit.get("overall_score") == "good" and not audit.get("audit_failed"):
+                            console.print(f"[dim]{name}: Website looks modern, skipping.[/dim]")
+                            website_skipped += 1
+                            website_skipped_names.add(name)
+                            continue
+
+                if name not in leads_seen:
+                    leads_seen.add(name)
+                    leads_to_process.append(data)
+                    if len(leads_to_process) >= max_leads:
+                        break
+
+            if len(leads_to_process) < max_leads:
+                console.print(f"[dim]  {area}: {len(leads_to_process)}/{max_leads} total leads so far...[/dim]")
+
+    already_contacted = len(leads_seen) - len(leads_to_process)
+    skipped = max(0, already_contacted)
+    verifier_msg = f" ({verifier_skipped} found online)" if verifier_skipped else ""
     console.print(
-        f"[green]Found {len(raw_leads)} results, "
+        f"[green]Found {total_discovered} results, "
         f"{len(leads_to_process)} new to process, "
         f"{skipped} already contacted, "
-        f"{website_skipped} skipped (good website).[/green]\n"
+        f"{website_skipped} skipped (good website){verifier_msg}.[/green]\n"
     )
 
     if not leads_to_process:
         console.print(
-            f"[bold orange3]⚠ All {category} in {city} have already been found. "
+            f"[bold orange3]⚠ All {category} in {city} have been screened. "
             f"Nothing new to process.[/bold orange3]"
         )
         add_discovery_alert(
             db,
             city=city,
             category=category,
-            message=f"{category.capitalize()} in {city} have been fully discovered. No new places left.",
+            message=f"{category.capitalize()} in {city} have been fully screened. No new places left.",
             alert_type="warning",
         )
+        if pool:
+            pool.close()
         db.close()
         return {
             "found": 0,
@@ -374,7 +505,7 @@ def run_pipeline(
             "city": city,
             "category": category,
             "leads": [],
-            "exhausted": True,
+            "exhausted": exhausted,
         }
 
     # Research + Outreach
@@ -675,20 +806,40 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
         return 1
 
-    city_input = Prompt.ask("Which city/cities to focus on? (comma-separated for multiple)")
-    cities = [c.strip() for c in city_input.split(",") if c.strip()]
-    if not cities:
-        console.print("[red]At least one city required.[/red]")
-        return 1
+    city_input = Prompt.ask(
+        "Which city/cities to focus on? (comma-separated, 'India' for all cities, press Enter for all India cities)"
+    )
+    city_input_stripped = city_input.strip()
+    if not city_input_stripped or city_input_stripped.lower() in ("india", "all"):
+        cities = (
+            CITY_TIERS.get("tier_1_india", [])
+            + CITY_TIERS.get("tier_2_india", [])
+            + CITY_TIERS.get("tier_3_india", [])
+        )
+        console.print(f"[yellow]No city specified — searching all {len(cities)} cities in India.[/yellow]")
+    else:
+        cities = [c.strip() for c in city_input.split(",") if c.strip()]
 
     category_input = Prompt.ask(
-        "What business type(s)? (comma-separated, e.g., cafe,salon,retail)"
+        "What business type(s)? (comma-separated, e.g., cafe,salon,retail — press Enter for all)"
     )
-    categories = [c.strip() for c in category_input.split(",") if c.strip()]
-    if not categories:
-        categories = ["all"]
+    category_input_stripped = category_input.strip()
+    if not category_input_stripped or category_input_stripped.lower() == "all":
+        categories = list(ALL_CATEGORIES)
+        console.print(f"[yellow]No category specified — searching all {len(categories)} business types.[/yellow]")
+    else:
+        categories = [c.strip() for c in category_input.split(",") if c.strip()]
 
     max_leads = IntPrompt.ask("How many leads per city+category combo?", default=20)
+
+    total_combos = len(cities) * len(categories)
+    if total_combos > 20:
+        if not Confirm.ask(
+            f"This will run {total_combos} city+category combinations ({len(cities)} cities × {len(categories)} categories). Continue?",
+            default=True,
+        ):
+            console.print("[dim]Aborted.[/dim]")
+            return 0
 
     db = get_db()
     skip_contacted = True
@@ -727,11 +878,28 @@ def cmd_batch(args: argparse.Namespace) -> int:
     """Batch run command for headless operation."""
     console.print(Panel.fit("[bold green]Batch Client Acquisition[/bold green]"))
 
-    cities = [c.strip() for c in args.cities.split(",") if c.strip()]
-    categories = [c.strip() for c in args.categories.split(",") if c.strip()]
+    cities_raw = args.cities.strip()
+    if not cities_raw or cities_raw.lower() in ("india", "all"):
+        cities = (
+            CITY_TIERS.get("tier_1_india", [])
+            + CITY_TIERS.get("tier_2_india", [])
+            + CITY_TIERS.get("tier_3_india", [])
+        )
+    else:
+        cities = [c.strip() for c in cities_raw.split(",") if c.strip()]
+
+    categories_raw = args.categories.strip()
+    if not categories_raw or categories_raw.lower() == "all":
+        categories = list(ALL_CATEGORIES)
+    else:
+        categories = [c.strip() for c in categories_raw.split(",") if c.strip()]
+
     if not cities or not categories:
         console.print("[red]--cities and --categories are required.[/red]")
         return 1
+
+    total_combos = len(cities) * len(categories)
+    console.print(f"[yellow]Batch mode: {len(cities)} cities × {len(categories)} categories = {total_combos} combinations[/yellow]")
 
     result = run_multi_pipeline(
         cities=cities,
@@ -969,7 +1137,7 @@ def main() -> int:
 
     # batch
     batch_parser = subparsers.add_parser("batch", help="Batch pipeline (headless, multi-city)")
-    batch_parser.add_argument("--cities", required=True, help="Comma-separated city names")
+    batch_parser.add_argument("--cities", default="", help="Comma-separated city names (empty or 'India' for all India cities)")
     batch_parser.add_argument("--categories", default="all", help="Comma-separated categories")
     batch_parser.add_argument("--max-leads", type=int, default=50, help="Max leads per city+category")
     batch_parser.add_argument("--channels", default="email", help="Comma-separated channels")

@@ -534,19 +534,30 @@ class MembershipLibrary:
 
     @classmethod
     def format_for_pitch(cls, business_type: str, currency: str = "inr") -> str:
-        """Format a membership concept as text for prompt injection."""
+        """Format a membership concept as text for prompt injection.
+
+        The concept is presented as an EXAMPLE ONLY. The AI is instructed
+        to create something completely unique for each business.
+        """
         concept = cls.get_concept(business_type)
         if not concept:
             return ""
 
-        lines = [f"Concept: {concept.name}", concept.description, ""]
-        lines.append("Tiers:")
+        lines = [
+            f"Example concept name (DO NOT use this name): {concept.name}",
+            f"Example description: {concept.description}",
+            "",
+            "Example tier structure (adapt pricing and benefits to THIS business):",
+        ]
         for tier in concept.tiers:
             price = tier.get("price_inr") if currency == "inr" else tier.get("price_usd")
             symbol = "₹" if currency == "inr" else "$"
             benefits = ", ".join(tier["benefits"])
             lines.append(f"  - {tier['name']}: {symbol}{price}/month — {benefits}")
         lines.append("")
-        lines.append(f"Hook: {concept.pitch_hook}")
-        lines.append(f"Revenue math: {concept.revenue_example}")
+        lines.append(f"Example hook: {concept.pitch_hook}")
+        lines.append(f"Example revenue math: {concept.revenue_example}")
+        lines.append("")
+        lines.append("INSTRUCTION: Create a COMPLETELY DIFFERENT concept for THIS business.")
+        lines.append("Use their actual offerings, name, and city to make it unique.")
         return "\n".join(lines)

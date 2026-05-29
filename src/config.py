@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="")
     openrouter_api_key: str = Field(default="")
     openrouter_model: str = Field(default="openai/gpt-4o-mini")
+    kimi_api_key: str = Field(default="")
+    kimi_model: str = Field(default="kimi-k2-5")
 
     # LLM connector settings
     llm_timeout_ms: int = Field(default=30000)

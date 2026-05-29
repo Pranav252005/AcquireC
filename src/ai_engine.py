@@ -202,6 +202,9 @@ class PitchCacheManager:
             "has_website": ctx.has_website,
             "issues": ctx.website_issues,
             "rating": ctx.rating,
+            "offerings": ctx.offerings,
+            "pain_point": ctx.biggest_pain_point,
+            "linkedin": ctx.linkedin_summary,
         }
         raw = json.dumps(key_data, sort_keys=True)
         return hashlib.sha256(raw.encode()).hexdigest()
@@ -261,16 +264,16 @@ class PitchCacheManager:
         db.commit()
 
 
-# Lazy-loaded model instances
-_local_llama: Any = None
+# Lazy-loaded model instances — keyed by model path so text and VLM can coexist
+_local_models: dict[str, Any] = {}
 _local_text: Any = None
 
 
 def _load_local_model(model_path: str, clip_model_path: str | None = None) -> Any:
-    """Load local model via llama-cpp-python (cached)."""
-    global _local_llama
-    if _local_llama is not None:
-        return _local_llama
+    """Load local model via llama-cpp-python (cached by model path)."""
+    cache_key = f"{model_path}::clip={clip_model_path}"
+    if cache_key in _local_models:
+        return _local_models[cache_key]
 
     try:
         from llama_cpp import Llama
@@ -286,8 +289,8 @@ def _load_local_model(model_path: str, clip_model_path: str | None = None) -> An
         kwargs["clip_model_path"] = clip_model_path
 
     try:
-        _local_llama = Llama(**kwargs)
-        return _local_llama
+        _local_models[cache_key] = Llama(**kwargs)
+        return _local_models[cache_key]
     except Exception as exc:
         raise RuntimeError(f"Failed to load local model: {exc}") from exc
 
@@ -459,17 +462,28 @@ class AIPitchEngine:
 
     def _try_primary(self, system_prompt: str, user_prompt: str) -> dict[str, str]:
         """Generate using the primary local text model with grammar constraint."""
+        from llama_cpp import LlamaGrammar
+
         llm = _load_local_model(self.settings.local_model_path)
         full_prompt = (
             f"<|im_start|>system\n{system_prompt}\n<|im_start|>user\n{user_prompt}\n<|im_start|>assistant\n"
         )
-        output = llm(
-            full_prompt,
-            max_tokens=1024,
-            stop=["<|im_start|>"],
-            temperature=TemperatureScheduler.get("draft"),
-            grammar=PITCH_GRAMMAR,
-        )
+        try:
+            grammar = LlamaGrammar.from_string(PITCH_GRAMMAR)
+            output = llm(
+                full_prompt,
+                max_tokens=1024,
+                stop=["<|im_start|>"],
+                temperature=TemperatureScheduler.get("draft"),
+                grammar=grammar,
+            )
+        except Exception:
+            output = llm(
+                full_prompt,
+                max_tokens=1024,
+                stop=["<|im_start|>"],
+                temperature=TemperatureScheduler.get("draft"),
+            )
         raw = output.get("choices", [{}])[0].get("text", "").strip()
         parsed = json.loads(raw)
         return {
@@ -481,6 +495,8 @@ class AIPitchEngine:
 
     def _try_vlm_fallback(self, system_prompt: str, user_prompt: str) -> dict[str, str]:
         """Fallback to the VLM model (with vision projector) if text model fails."""
+        from llama_cpp import LlamaGrammar
+
         llm = _load_local_model(
             str(self.settings.vlm_model_path),
             clip_model_path=str(self.settings.vlm_mmproj_path),
@@ -488,13 +504,22 @@ class AIPitchEngine:
         full_prompt = (
             f"<|im_start|>system\n{system_prompt}\n<|im_start|>user\n{user_prompt}\n<|im_start|>assistant\n"
         )
-        output = llm(
-            full_prompt,
-            max_tokens=1024,
-            stop=["<|im_start|>"],
-            temperature=TemperatureScheduler.get("draft"),
-            grammar=PITCH_GRAMMAR,
-        )
+        try:
+            grammar = LlamaGrammar.from_string(PITCH_GRAMMAR)
+            output = llm(
+                full_prompt,
+                max_tokens=1024,
+                stop=["<|im_start|>"],
+                temperature=TemperatureScheduler.get("draft"),
+                grammar=grammar,
+            )
+        except Exception:
+            output = llm(
+                full_prompt,
+                max_tokens=1024,
+                stop=["<|im_start|>"],
+                temperature=TemperatureScheduler.get("draft"),
+            )
         raw = output.get("choices", [{}])[0].get("text", "").strip()
         parsed = json.loads(raw)
         return {
@@ -545,40 +570,60 @@ class AIPitchEngine:
         maturity = ctx.maturity_stage or MaturityAnalyzer.infer_stage(ctx.years_in_business)
         benefits = MaturityAnalyzer.get_website_benefits(maturity, ctx.business_type)
 
+        # Build a unique fallback using business-specific details
+        offerings_text = ctx.offerings or "your services"
+        name_part = ctx.name.split()[0] if ctx.name else "your"
+
         pitch_lines = [
             f"Hi {ctx.name} team,",
             "",
-            f"I came across your business in {ctx.city} and noticed you could benefit from a modern, mobile-friendly website.",
+            f"I came across {ctx.name} in {ctx.city} and was impressed by what you're doing with {offerings_text[:60]}.",
             "",
         ]
 
         if ctx.years_in_business:
             pitch_lines.append(
-                f"With {ctx.years_in_business} years in business, you've built something real — now let a professional website work while you sleep."
+                f"With {ctx.years_in_business} years in business, you've clearly built something people trust — but many potential customers still can't find you online."
             )
         else:
             pitch_lines.append(
-                "A professional website helps new customers find you, learn what you offer, and get in touch easily."
+                f"{name_part} is clearly gaining traction, but a professional website would help even more customers discover what you offer."
             )
 
-        if ctx.membership_concept:
+        if ctx.offerings:
             pitch_lines.extend([
                 "",
-                f"Here's an idea: {ctx.membership_concept}",
-                "This runs entirely through your website — sign-ups, payments, and member tracking."
+                f"Imagine a site where visitors browse your {offerings_text[:80]}, book directly, and keep coming back through a loyalty program built around what YOU actually sell — not some generic template."
+            ])
+        else:
+            pitch_lines.extend([
+                "",
+                "Imagine a site where visitors book directly, browse your offerings, and keep coming back through a loyalty program built specifically for your business."
             ])
 
         pitch_lines.extend([
             "",
-            "I build fast, beautiful websites tailored for local businesses like yours.",
-            f"Would you be open to a quick chat about how a new site could drive more customers your way?",
+            "I build fast, mobile-first websites with integrated booking and payments for local businesses.",
+            f"Would you be open to a quick 10-minute call to explore what a website could do for {ctx.name}?",
             "",
             "Best regards",
         ])
 
+        # Generate a unique fallback membership idea
+        if ctx.offerings:
+            unique_idea = (
+                f"A '{name_part} Insider' program where regulars get first access to new offerings, "
+                f"member-only pricing on {offerings_text[:50]}, and a digital loyalty card that tracks visits "
+                f"and unlocks rewards automatically through the website."
+            )
+        elif concept:
+            unique_idea = f"A customized version of the {concept.name} adapted specifically for {ctx.name}'s clientele and local market."
+        else:
+            unique_idea = f"A '{name_part} Rewards' digital loyalty program with member-only perks, online booking credits, and referral bonuses."
+
         return {
             "pitch_text": "\n".join(pitch_lines),
-            "context_summary": f"Template fallback for {ctx.business_type} ({maturity})",
-            "membership_idea": ctx.membership_concept or (concept.description if concept else ""),
+            "context_summary": f"Template fallback for {ctx.name} ({ctx.business_type}, {maturity})",
+            "membership_idea": unique_idea,
             "website_benefits": "\n".join(f"- {b}" for b in benefits),
         }

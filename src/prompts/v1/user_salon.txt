@@ -13,7 +13,7 @@ LinkedIn summary: {{ linkedin_summary[:500] }}
 Offerings: {{ offerings[:300] }}
 Biggest pain point: {{ biggest_pain_point }}
 
-Membership concept for salons:
+EXAMPLE membership concepts for salons (create something COMPLETELY DIFFERENT and unique for {{ name }} based on their actual offerings above):
 {{ membership_concept }}
 
 Website benefits for {{ maturity_stage }} salons:
@@ -25,7 +25,9 @@ Generate the JSON pitch. Focus on:
 - Online booking with stylist selection
 - Service catalog with pricing
 - Before/after gallery (with consent)
-- Glow Pass membership for predictable revenue and weekday fill
+- A UNIQUE membership program tailored to what THIS salon actually offers
 - Product e-commerce with member discounts
+
+IMPORTANT: The membership concept must be UNIQUE to {{ name }} and based on their actual services. Do NOT copy the example concept name.
 
 Return ONLY valid JSON with keys: pitch_text, context_summary, membership_idea, website_benefits.

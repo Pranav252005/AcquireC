@@ -166,9 +166,10 @@ class LocalConnector(LLMConnector):
         elif fmt == "llama":
             kwargs["stop"] = ["<|eot_id|>"]
 
-        # Attempt grammar-constrained generation if the underlying library supports it
+        # Grammar-constrained generation (llama-cpp-python >= 0.3.23 needs LlamaGrammar object)
         try:
-            kwargs["grammar"] = PITCH_GRAMMAR
+            from llama_cpp import LlamaGrammar
+            kwargs["grammar"] = LlamaGrammar.from_string(PITCH_GRAMMAR)
             output = llm(full_prompt, **kwargs)
         except Exception:
             logger.debug("Grammar-constrained generation failed, falling back to plain text")

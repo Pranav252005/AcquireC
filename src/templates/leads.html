@@ -66,6 +66,10 @@
                 <td class="px-4 py-3 whitespace-nowrap">
                     <a href="/leads/{{ lead.id }}" class="font-medium text-indigo-600 hover:text-indigo-900">{{ lead.business_name }}</a>
                     {% if lead.rating %}<span class="text-xs text-gray-400 ml-1">{{ lead.rating }}★</span>{% endif %}
+                    {% if lead.notes %}
+                        {% set latest_note = lead.notes|sort(attribute='created_at', reverse=true)|first %}
+                        <div class="mt-1 text-xs text-gray-500 italic max-w-xs truncate" title="{{ latest_note.note_text }}">💬 {{ latest_note.note_text }}</div>
+                    {% endif %}
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ lead.city }}</td>
                 <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ lead.business_type }}</td>
